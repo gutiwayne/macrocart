@@ -30,7 +30,7 @@ assets.
 ## Quick start (Docker)
 
 ```bash
-git clone https://github.com/jesusg703/macrocart.git
+git clone https://github.com/gutiwayne/macrocart.git
 cd macrocart
 cp env.example .env        # optional: edit it
 docker compose up -d --build
