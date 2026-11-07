@@ -119,7 +119,7 @@ Design notes: [`docs/NOTES.md`](docs/NOTES.md).
 
 ## License
 
-Copyright © 2026 jg96. Licensed under the
+Copyright © 2026 gutiwayne. Licensed under the
 [GNU Affero General Public License v3.0](LICENSE). Third-party notices:
 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
