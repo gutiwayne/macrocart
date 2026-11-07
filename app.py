@@ -23,6 +23,9 @@ app = Flask(__name__)
 
 DATA_DIR = os.environ.get("MACROCART_DATA_DIR", "/app/data")
 DB_FILE = os.path.join(DATA_DIR, "macrocart.db")
+# NutriTrace is optional. NUTRITRACE_ENABLED=false skips it entirely; when enabled,
+# a missing, corrupt or incompatible database only logs a warning.
+NT_ENABLED = os.environ.get("NUTRITRACE_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
 NT_DB = os.environ.get("NUTRITRACE_DB", "/nutritrace/db/nutritrace.db")
 NT_UPLOADS = os.environ.get("NUTRITRACE_UPLOADS", "/nutritrace/uploads")
 OFF_COUNTRY = os.environ.get("OFF_COUNTRY", "").strip()      # e.g. "en:spain"; empty = worldwide
@@ -161,9 +164,12 @@ def _num(v):
 
 # ─────────────────────────── Products (NutriTrace + Open Food Facts) ───────────────────────────
 
+_nt_warned = set()
+
+
 def _nt_conn():
-    """Read-only connection to NutriTrace, or None if it is not mounted."""
-    if not os.path.exists(NT_DB):
+    """Read-only connection to NutriTrace, or None if disabled or not mounted."""
+    if not NT_ENABLED or not os.path.isfile(NT_DB):
         return None
     conn = sqlite3.connect(f"file:{NT_DB}?mode=ro", uri=True, timeout=5)
     conn.row_factory = sqlite3.Row
@@ -205,14 +211,20 @@ def _products():
     name+brand (a food can be copied to several NutriTrace users; on a clash the
     NutriTrace one wins)."""
     rows = []
-    conn = _nt_conn()
-    if conn is not None:
-        try:
-            rows = conn.execute(
-                "SELECT id, name, brand, nutrition, portion, unit, img_url FROM foods"
-                " WHERE deleted_at IS NULL ORDER BY id").fetchall()
-        finally:
-            conn.close()
+    try:
+        conn = _nt_conn()
+        if conn is not None:
+            try:
+                rows = conn.execute(
+                    "SELECT id, name, brand, nutrition, portion, unit, img_url FROM foods"
+                    " WHERE deleted_at IS NULL ORDER BY id").fetchall()
+            finally:
+                conn.close()
+    except sqlite3.Error as e:   # corrupt file, wrong schema, locked: carry on without it
+        if str(e) not in _nt_warned:   # once per distinct error, not on every request
+            _nt_warned.add(str(e))
+            app.logger.warning("NutriTrace database not usable (%s): showing internet products only", e)
+        rows = []
     rows = list(rows) + _db().execute(
         "SELECT id + ? AS id, name, brand, nutrition, 100.0 AS portion, 'g' AS unit, img_url"
         " FROM catalog_extra ORDER BY id", (EXTRA_BASE,)).fetchall()
@@ -231,14 +243,17 @@ def _product_img_url(pid):
         row = _db().execute("SELECT img_url FROM catalog_extra WHERE id=?",
                             (pid - EXTRA_BASE,)).fetchone()
         return None if row is None else (row["img_url"] or "")
-    conn = _nt_conn()
-    if conn is None:
-        return None
     try:
-        row = conn.execute("SELECT img_url FROM foods WHERE id=? AND deleted_at IS NULL",
-                           (pid,)).fetchone()
-    finally:
-        conn.close()
+        conn = _nt_conn()
+        if conn is None:
+            return None
+        try:
+            row = conn.execute("SELECT img_url FROM foods WHERE id=? AND deleted_at IS NULL",
+                               (pid,)).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
     return None if row is None else (row["img_url"] or "")
 
 
@@ -263,10 +278,7 @@ def list_items():
     rows = _db().execute("SELECT * FROM items ORDER BY created_at").fetchall()
     # Photo: the product with the same name (case-insensitive), whether the line
     # came from the Foods tab or was typed by hand.
-    try:
-        photos = _img_index()
-    except sqlite3.Error:
-        photos = {}
+    photos = _img_index()
     out = []
     for r in rows:
         it = _item_row(r)
@@ -371,7 +383,7 @@ def list_products():
             "prices": prices.get(r["id"], []),
             "in_list": _txt(r["name"], NAME_MAX).lower() in pending,
         })
-    return jsonify({"nutritrace": os.path.exists(NT_DB), "items": items,
+    return jsonify({"nutritrace": NT_ENABLED and os.path.isfile(NT_DB), "items": items,
                     "supermarkets": sorted(sups.values(), key=str.lower)})
 
 

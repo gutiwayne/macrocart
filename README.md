@@ -43,11 +43,13 @@ Without a NutriTrace database the board starts empty: fill it with
 
 ### With NutriTrace
 
-Point `NUTRITRACE_DIR` (in `.env`) at the folder that holds NutriTrace's
+Leave `NUTRITRACE_ENABLED=true` and point `NUTRITRACE_DIR` (in `.env`) at the folder that holds NutriTrace's
 `db/nutritrace.db` and `uploads/`. Both are mounted read-only; macrocart opens the
 database with `mode=ro` and reads the `foods` table (name, brand, nutrition,
 portion, unit, photo). Deleted foods are skipped and foods shared between users
-are shown once.
+are shown once. If the database is missing, corrupt or has another schema, the
+board carries on with internet products and a warning goes to the log; set
+`NUTRITRACE_ENABLED=false` to skip NutriTrace altogether.
 
 ## Configuration
 
@@ -56,6 +58,7 @@ All settings are environment variables (see [`env.example`](env.example)).
 | Variable | Default | Meaning |
 |---|---|---|
 | `MACROCART_PORT` | `5000` | Host port, bound to `127.0.0.1` in `compose.yaml` |
+| `NUTRITRACE_ENABLED` | `true` | `false` = never look for NutriTrace (internet products only) |
 | `NUTRITRACE_DIR` | `./nutritrace` | NutriTrace data folder (`db/`, `uploads/`), read-only |
 | `OFF_COUNTRY` | *(empty: worldwide)* | Open Food Facts country tag, e.g. `en:spain` |
 | `OFF_LANG` | `en` | Two-letter language for product names |

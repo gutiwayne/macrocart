@@ -41,8 +41,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build and start
-        run: docker compose up -d --build
+      - name: Build and start (with an unusable NutriTrace file)
+        # A garbage database must not break the app: it falls back to internet products.
+        run: |
+          mkdir -p nutritrace/db nutritrace/uploads
+          echo "not a database" > nutritrace/db/nutritrace.db
+          docker compose up -d --build
 
       - name: Wait until healthy
         run: |
@@ -64,6 +68,7 @@ jobs:
             [ "$code" = 200 ]
           done
           curl -s -X POST -H 'Content-Type: application/json' -d '{"name":"Test"}' http://127.0.0.1:5000/api/items | grep -q '"Test"'
+          curl -s http://127.0.0.1:5000/api/products | grep -q '"items":\[\]'
 
       - name: Logs
         if: always()

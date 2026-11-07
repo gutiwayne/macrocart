@@ -9,6 +9,10 @@ macrocart adds (column override, rating, favourite, notes, hidden flag, prices,
 internet products) lives in its own `macrocart.db`, keyed by product id. Removing
 macrocart leaves NutriTrace untouched.
 
+NutriTrace is optional: `NUTRITRACE_ENABLED=false` never opens it, and when
+enabled any `sqlite3.Error` (missing table, corrupt file, lock) is logged and the
+board falls back to internet products instead of failing.
+
 NutriTrace stores nutrition **per portion** (`foods.portion`, `foods.unit`);
 macrocart normalises it to 100 g/ml.
 
