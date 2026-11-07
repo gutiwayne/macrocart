@@ -1,0 +1,9 @@
+.git
+.github
+.env
+data
+nutritrace
+__pycache__
+*.pyc
+*.db
+*.db-*

@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>macrocart</title>
+<style>
+  :root {
+    --bg: #F5F3F6; --surface: #FFFFFF; --surface-solid: #FFFFFF; --surface-2: #F0ECEF; --text: #231A22; --muted: #6A5C68;
+    --border: #E1DAE0; --primary: #7A2E6B; --primary-hover: #64245A; --primary-contrast: #FFFFFF;
+    --danger: #B42318; --success: #4F7D2A; --tag-bg: #F3E8F0; --tag-fg: #6A2A5E;
+    --shadow-md: 0 8px 24px rgba(35, 26, 34, .12); --radius: 12px; --radius-lg: 16px;
+    --cat-protein: #B4412C; --cat-carbs: #B7791F; --cat-fat: #2F7A5B;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1A1419; --surface: #241C23; --surface-solid: #241C23; --surface-2: #2E242D; --text: #F1EAF0; --muted: #B6A8B3;
+      --border: #3A2F38; --primary: #D98CC6; --primary-hover: #E6A8D6; --primary-contrast: #2A0F24;
+      --danger: #F2877D; --success: #9CCB6B; --tag-bg: #35243A; --tag-fg: #E9C4DF;
+      --shadow-md: 0 8px 24px rgba(0, 0, 0, .45);
+      --cat-protein: #F08D78; --cat-carbs: #E9B95B; --cat-fat: #74C79F;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 17px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+  button { font: inherit; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 18px 16px calc(24px + env(safe-area-inset-bottom)); }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  h1 { margin: 0; font-size: 1.6rem; font-weight: 700; letter-spacing: -.02em; }
+  .sub { color: var(--muted); font-size: .95rem; }
+  .btn { padding: 10px 15px; min-height: 44px; border: 0; border-radius: 10px; cursor: pointer; background: var(--primary);
+    color: var(--primary-contrast); font-weight: 600; white-space: nowrap; }
+  .btn:hover { background: var(--primary-hover); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn.ghost:hover { background: var(--tag-bg); color: var(--tag-fg); }
+  .hint { color: var(--muted); font-size: .92rem; margin: 0 0 12px; }
+  .hint[hidden] { display: none; }
+  input, select, textarea { font: inherit; }
+
+  /* Tabs */
+  .tabs { display: flex; border-bottom: 2px solid var(--border); margin-bottom: 16px; }
+  .tab-btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 14px; border: 0; background: none; color: var(--muted);
+    cursor: pointer; font-size: 1rem; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+  .tab-btn.is-active { color: var(--text); border-bottom-color: var(--primary); font-weight: 600; }
+  .tab-btn svg { width: 18px; height: 18px; }
+  .tab-panel { display: none; }
+  .tab-panel.is-active { display: block; }
+
+  /* Toast */
+  .toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%) translateY(20px); opacity: 0; pointer-events: none;
+    background: var(--text); color: var(--bg); border-radius: 12px; padding: 10px 16px; font-size: .95rem; z-index: 80;
+    transition: opacity .2s, transform .2s; display: flex; align-items: center; gap: 12px; max-width: calc(100% - 24px); }
+  .toast.show { opacity: 1; transform: translateX(-50%); pointer-events: auto; }
+  .toast-action { background: none; border: 0; color: var(--bg); font-weight: 700; text-decoration: underline; cursor: pointer; }
+
+  /* List tab: photo cards */
+  .lst-add { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; position: sticky; top: 0; z-index: 6; padding: 8px 0; background: var(--bg); }
+  .lst-add input { flex: 1 1 200px; min-width: 0; padding: 10px 12px; min-height: 46px; border: 1px solid var(--border);
+    border-radius: 12px; background: var(--surface-solid); color: var(--text); font-size: 1.02rem; }
+  .lst-add #lstSuper { flex: 0 1 140px; }
+  .lst-add input:focus { outline: none; border-color: var(--primary); }
+  .lst-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .lst-filters[hidden], .lst-foot[hidden], .empty[hidden] { display: none; }
+  .chip { border: 1px solid var(--border); background: var(--surface-solid); color: var(--text); border-radius: 999px;
+    padding: 6px 14px; min-height: 38px; font-size: .92rem; cursor: pointer; }
+  .chip.is-active { border-color: var(--primary); background: var(--tag-bg); color: var(--tag-fg); }
+  .lst-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .lst-card { position: relative; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; transition: opacity .15s; }
+  .lst-hit { position: relative; display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; }
+  .lst-img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; background: var(--surface-2); }
+  .lst-img.ph, .tile-img.ph, .off-item .ph { display: flex; align-items: center; justify-content: center; font-size: 2.2rem; }
+  .lst-check, .tile-check { position: absolute; top: 8px; left: 8px; width: 30px; height: 30px; border-radius: 50%; display: flex;
+    align-items: center; justify-content: center; background: rgba(255,255,255,.88); border: 2px solid var(--border);
+    color: transparent; font-weight: 800; }
+  .lst-del, .tile-info { position: absolute; top: 6px; right: 6px; width: 34px; height: 34px; border-radius: 50%; border: 0;
+    background: rgba(0,0,0,.45); color: #fff; font-size: 1.1rem; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .lst-body, .tile-body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  .lst-name { font-weight: 600; font-size: .98rem; line-height: 1.2; overflow-wrap: anywhere; }
+  .lst-super { font-size: .8rem; color: var(--muted); }
+  .lst-qty { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 4px; }
+  .lst-qty button { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-solid);
+    color: var(--text); font-size: 1.1rem; cursor: pointer; }
+  .lst-qty b { min-width: 22px; text-align: center; }
+  .lst-card.done { opacity: .55; }
+  .lst-card.done .lst-img { filter: grayscale(1); }
+  .lst-card.done .lst-name { text-decoration: line-through; text-decoration-color: var(--success); text-decoration-thickness: 2px; }
+  .lst-card.done .lst-check { background: var(--success); border-color: var(--success); color: #fff; }
+  .lst-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; color: var(--muted); }
+  .empty { text-align: center; color: var(--muted); padding: 40px 12px; }
+
+  /* Foods tab: three-column board */
+  .board-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .board-tools input, .board-tools select { flex: 1 1 140px; min-width: 0; padding: 10px 12px; min-height: 44px; border: 1px solid var(--border);
+    border-radius: 10px; background: var(--surface-solid); color: var(--text); font-size: .95rem; }
+  .board-tools input[type=search] { flex-basis: 100%; }
+  .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: .92rem; color: var(--muted); cursor: pointer; padding: 6px 2px; }
+  .toggle input { width: 18px; height: 18px; accent-color: var(--primary); }
+  .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; padding-bottom: 90px; }
+  .col { min-width: 0; }
+  .col-head { position: sticky; top: 0; z-index: 5; display: flex; align-items: baseline; justify-content: space-between; gap: 6px;
+    padding: 10px 12px; margin-bottom: 8px; border-radius: 12px; background: var(--c); color: #fff; font-weight: 700; }
+  @media (prefers-color-scheme: dark) { .col-head { color: #1A1419; } }
+  .col-head small { font-weight: 600; opacity: .85; font-size: .85rem; }
+  .col-list { display: flex; flex-direction: column; gap: 8px; }
+  .col-empty { color: var(--muted); font-size: .85rem; text-align: center; padding: 14px 4px; border: 1px dashed var(--border); border-radius: 12px; }
+  .tile { position: relative; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .tile:hover { box-shadow: var(--shadow-md); }
+  .tile.sel { outline: 3px solid var(--c); outline-offset: -1px; }
+  .tile.sel .tile-check { background: var(--c); border-color: var(--c); color: #fff; }
+  .tile-img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; display: block; background: var(--surface-2); }
+  .tile-badge { position: absolute; left: 6px; bottom: 6px; background: var(--success); color: #fff; border-radius: 999px; padding: 1px 8px; font-size: .72rem; font-weight: 600; }
+  .tile-fav { position: absolute; right: 8px; bottom: 6px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+  .tile-name { font-weight: 600; font-size: .9rem; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .tile-brand { font-size: .75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile-macro { font-size: .75rem; color: var(--muted); }
+  .tile-macro b { color: var(--text); font-weight: 600; }
+  .tile-foot { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; font-size: .75rem; }
+  .macro-bar { display: flex; height: 5px; border-radius: 3px; overflow: hidden; background: var(--surface-2); gap: 1px; }
+  .macro-bar span { display: block; }
+  .stars { color: #C9A227; }
+  .stars .off { color: var(--border); }
+  .price-badge { background: var(--tag-bg); color: var(--tag-fg); border-radius: 999px; padding: 1px 7px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .sel-bar { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 55; display: flex; align-items: center; gap: 10px;
+    width: min(560px, calc(100% - 24px)); padding: 10px 10px 10px 16px; border-radius: 16px;
+    background: var(--surface-solid); border: 1px solid var(--border); box-shadow: var(--shadow-md); }
+  .sel-bar[hidden] { display: none; }
+  .sel-bar span { flex: 1; font-weight: 600; }
+
+  /* Dialogs */
+  .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 60; }
+  .modal-back[hidden] { display: none; }
+  .modal { background: var(--surface-solid); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+    width: 100%; max-width: 480px; max-height: 88vh; overflow: auto; padding: 18px; }
+  .modal h3 { margin: 0 0 4px; font-size: 1.1rem; }
+  .modal .sub { margin: 0 0 12px; }
+  .field-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .field-row > input { flex: 1 1 150px; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--surface-solid); color: var(--text); }
+  .cm-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+  .cm-head img { width: 84px; height: 84px; border-radius: 12px; object-fit: cover; flex: 0 0 84px; }
+  .cm-macros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px; text-align: center; }
+  .cm-macros div { background: var(--surface-2); border-radius: 10px; padding: 8px 4px; font-size: .78rem; color: var(--muted); }
+  .cm-macros b { display: block; font-size: 1.05rem; color: var(--text); }
+  .cm-lbl { display: block; font-size: .85rem; font-weight: 600; color: var(--muted); margin: 10px 0 4px; }
+  .cm-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-solid); color: var(--text); font-size: .95rem; }
+  textarea.cm-input { resize: vertical; }
+  .cm-stars { display: flex; gap: 2px; }
+  .cm-stars button { background: none; border: 0; cursor: pointer; font-size: 1.7rem; line-height: 1; padding: 4px; color: var(--border); min-height: 44px; min-width: 40px; }
+  .cm-stars button.on { color: #C9A227; }
+  .cm-price { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px dashed var(--border); }
+  .cm-price .s { flex: 1; }
+  .cm-price .best { font-size: .75rem; color: var(--success); font-weight: 600; }
+  .cm-price button { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 1.2rem; min-height: 36px; min-width: 36px; }
+  .off-modal { max-width: 760px; max-height: 90vh; }
+  .off-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .off-item { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; background: var(--surface); cursor: pointer; }
+  .off-item.open { outline: 3px solid var(--primary); outline-offset: -1px; }
+  .off-item img, .off-item .ph { width: 100%; aspect-ratio: 1 / 1; object-fit: contain; background: #fff; display: block; }
+  .off-item .ph { background: var(--surface-2); }
+  .off-pick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 0 6px 8px; }
+  .off-pick button { min-height: 40px; border: 0; border-radius: 9px; color: #fff; font-size: .78rem; font-weight: 700; cursor: pointer;
+    background: var(--c); opacity: .75; padding: 4px 2px; }
+  .off-pick button.sug { opacity: 1; box-shadow: 0 0 0 2px var(--text) inset; }
+  @media (prefers-color-scheme: dark) { .off-pick button { color: #1A1419; } }
+  .off-added { margin: 0 8px 8px; text-align: center; font-size: .8rem; font-weight: 600; color: var(--success); }
+
+  @media (max-width: 560px) {
+    .tab-btn span { display: none; }
+    .lst-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .lst-name { font-size: .9rem; }
+    .board { gap: 6px; }
+    .col-head { padding: 8px; font-size: .88rem; flex-direction: column; gap: 0; }
+    .tile-body { padding: 6px 6px 7px; }
+    .tile-name { font-size: .8rem; }
+    .tile-brand { display: none; }
+    .tile-check { width: 24px; height: 24px; }
+    .tile-info { width: 32px; height: 32px; font-size: .95rem; }
+  }
+  @media (prefers-reduced-motion: reduce) { .toast, .lst-card { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Shopping list</h1>
+      <span class="sub" id="counter">0 of 0 done</span>
+    </div>
+    <button class="btn ghost" id="copyBtn" type="button" title="Copy the list to the clipboard">Copy</button>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab-btn is-active" type="button" data-tab="list">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg>
+      <span>List</span>
+    </button>
+    <button class="tab-btn" type="button" data-tab="foods">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c-4.4 0-8-3.1-8-7.5C4 9 7 6 10 6c1 0 1.5.4 2 .4S13 6 14 6c3 0 6 3 6 7.5 0 4.4-3.6 7.5-8 7.5z"/><path d="M12 6c0-2 1-3.5 3-4"/></svg>
+      <span>Foods</span>
+    </button>
+  </nav>
+
+  <!-- ══════════ List ══════════ -->
+  <section class="tab-panel is-active" id="panel-list">
+    <form class="lst-add" id="composer" autocomplete="off">
+      <input type="text" id="name" list="lstSuggest" placeholder="Add a product…" required maxlength="120" aria-label="Product">
+      <datalist id="lstSuggest"></datalist>
+      <input type="text" id="lstSuper" list="lstSuperList" placeholder="Shop" maxlength="40" aria-label="Supermarket">
+      <datalist id="lstSuperList"></datalist>
+      <button class="btn" type="submit">Add</button>
+    </form>
+    <div class="lst-filters" id="lstFilters" hidden></div>
+    <div class="lst-grid" id="lstGrid"></div>
+    <div class="empty" id="lstEmpty" hidden>Your list is empty.<br>Add products above or from the Foods tab.</div>
+    <div class="lst-foot" id="lstFoot" hidden>
+      <span id="lstFootStats"></span>
+      <button class="btn ghost" id="clearBtn" type="button">Clear bought</button>
+    </div>
+  </section>
+
+  <!-- ══════════ Foods ══════════ -->
+  <section class="tab-panel" id="panel-foods">
+    <div class="board-tools">
+      <input type="search" id="catSearch" placeholder="Search product or brand…" maxlength="120">
+      <select id="catSuper" aria-label="Supermarket"><option value="">All shops</option></select>
+      <select id="catSort" aria-label="Sort">
+        <option value="rating">Top rated</option>
+        <option value="name">Name</option>
+        <option value="protein">Most protein</option>
+        <option value="kcal">Fewest kcal</option>
+        <option value="price">Cheapest</option>
+      </select>
+      <label class="toggle"><input type="checkbox" id="catFavOnly"> ♥ Favourites</label>
+      <label class="toggle"><input type="checkbox" id="catHidden"> Hidden <span id="catHiddenN"></span></label>
+      <button class="btn" type="button" id="offOpen">🌐 Search the internet</button>
+    </div>
+    <p class="hint">Tap cards to pick them, then add them to the list. <b>ⓘ</b> opens the card: rating, notes and prices.</p>
+    <p class="hint" id="catHint" hidden></p>
+    <div class="board" id="catBoard"></div>
+    <div class="sel-bar" id="selBar" hidden>
+      <span id="selCount"></span>
+      <button class="btn ghost" type="button" id="selClear">Clear</button>
+      <button class="btn" type="button" id="selAdd">Add to list</button>
+    </div>
+  </section>
+</div>
+
+<div class="modal-back" id="offBack" hidden>
+  <div class="modal off-modal" role="dialog" aria-modal="true" aria-labelledby="offTitle">
+    <h3 id="offTitle">Search the internet</h3>
+    <p class="sub">Open Food Facts results only. Tap one and pick its column.</p>
+    <form class="field-row" id="offForm" autocomplete="off">
+      <input type="search" id="offQ" placeholder="e.g. protein yogurt, tuna, rice…" maxlength="100" aria-label="Search the internet">
+      <button class="btn" type="submit" id="offGo">Search</button>
+    </form>
+    <p class="hint" id="offHint"></p>
+    <div class="off-grid" id="offList"></div>
+    <button class="btn ghost" type="button" id="offMore" hidden style="width:100%;margin-top:10px">More results</button>
+    <button class="btn ghost" type="button" id="offClose" style="width:100%;margin-top:8px">Close</button>
+  </div>
+</div>
+
+<div class="modal-back" id="catBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="cmName">
+    <div class="cm-head">
+      <img id="cmImg" alt="" hidden>
+      <div>
+        <h3 id="cmName"></h3>
+        <p class="sub" id="cmBrand"></p>
+      </div>
+    </div>
+    <div class="cm-macros" id="cmMacros"></div>
+    <label class="cm-lbl" for="cmCat">Column</label>
+    <select id="cmCat" class="cm-input"></select>
+    <span class="cm-lbl">Rating</span>
+    <div class="cm-stars" id="cmStars"></div>
+    <label class="toggle"><input type="checkbox" id="cmFav"> Favourite</label>
+    <label class="toggle"><input type="checkbox" id="cmHidden"> Hide from the board</label>
+    <label class="cm-lbl" for="cmNotes">Notes</label>
+    <textarea id="cmNotes" class="cm-input" rows="3" maxlength="500" placeholder="Taste, how you have it, alternatives…"></textarea>
+    <span class="cm-lbl">Prices per shop</span>
+    <div id="cmPrices"></div>
+    <div class="field-row">
+      <input type="text" id="cmSup" list="cmSupList" placeholder="Shop…" maxlength="40">
+      <datalist id="cmSupList"></datalist>
+      <input type="number" id="cmPrice" inputmode="decimal" step="0.01" min="0" max="9999.99" placeholder="Price">
+      <button class="btn" type="button" id="cmAddPrice">Save</button>
+    </div>
+    <button class="btn ghost" type="button" id="cmClose" style="width:100%;margin-top:8px">Close</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* Shared helpers. Each tab below keeps its own state. */
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+const esc = (s) => String(s == null ? "" : s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+const num = (n) => (Number(n) || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
+const money = (n) => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+let toastTimer = null;
+function toast(msg, action){
+  const el = $("#toast");
+  el.innerHTML = "";
+  el.appendChild(document.createTextNode(msg));
+  let duration = 2200;
+  if(action){
+    duration = 4000;
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.className = "toast-action"; btn.textContent = action.label;
+    btn.addEventListener("click", () => { clearTimeout(toastTimer); el.classList.remove("show"); action.onClick(); });
+    el.appendChild(btn);
+  }
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), duration);
+}
+
+async function api(path, opts = {}){
+  const res = await fetch(path, { headers: opts.body ? { "Content-Type": "application/json" } : undefined, ...opts });
+  if(!res.ok){
+    let msg = "Error " + res.status;
+    try { const j = await res.json(); if(j && j.error) msg = j.error; } catch(e){}
+    throw new Error(msg);
+  }
+  return res.status === 204 ? null : res.json();
+}
+</script>
+
+<script>
+/* ═══════════ List tab: photo cards ═══════════
+   The photo is that of the product with the same name (img_id from /api/items).
+   Reloads on the "macrocart:refresh" event, sent by the Foods tab. */
+(() => {
+  let items = [];
+  let filterSuper = "";
+
+  async function reload(){
+    try { items = await api("/api/items"); } catch(e){ toast("Could not load the list"); return; }
+    render();
+  }
+
+  function card(i){
+    const img = i.img_id != null
+      ? '<img class="lst-img" loading="lazy" src="/api/products/' + i.img_id + '/img" alt="">'
+      : '<span class="lst-img ph" aria-hidden="true">🛒</span>';
+    return '<div class="lst-card' + (i.checked ? " done" : "") + '" data-id="' + esc(i.id) + '">' +
+      '<button class="lst-hit" type="button" data-act="check" aria-pressed="' + i.checked +
+        '" aria-label="' + (i.checked ? "Unmark " : "Mark bought: ") + esc(i.name) + '">' + img +
+        '<span class="lst-check" aria-hidden="true">✓</span></button>' +
+      '<button class="lst-del" type="button" data-act="del" aria-label="Delete ' + esc(i.name) + '">×</button>' +
+      '<div class="lst-body">' +
+        '<span class="lst-name">' + esc(i.name) + "</span>" +
+        (i.supermarket ? '<span class="lst-super">' + esc(i.supermarket) + "</span>" : "") +
+        '<div class="lst-qty">' +
+          '<button type="button" data-act="minus" aria-label="Less">−</button>' +
+          "<b>" + i.qty + "</b>" +
+          '<button type="button" data-act="plus" aria-label="More">+</button>' +
+        "</div>" +
+      "</div></div>";
+  }
+
+  function render(){
+    const supers = [...new Set(items.map(i => i.supermarket).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    if(filterSuper && !supers.includes(filterSuper)) filterSuper = "";
+    const fbox = $("#lstFilters");
+    fbox.hidden = supers.length < 2;
+    fbox.innerHTML = supers.length < 2 ? "" :
+      ['<button type="button" class="chip' + (filterSuper ? "" : " is-active") + '" data-super="">All</button>']
+      .concat(supers.map(s => '<button type="button" class="chip' + (filterSuper === s ? " is-active" : "") +
+        '" data-super="' + esc(s) + '">' + esc(s) + "</button>")).join("");
+
+    const shown = items.filter(i => !filterSuper || i.supermarket === filterSuper)
+      .sort((a, b) => (a.checked - b.checked) || (a.created_at - b.created_at));
+    $("#lstGrid").innerHTML = shown.map(card).join("");
+    $("#lstEmpty").hidden = items.length > 0;
+
+    const done = items.filter(i => i.checked).length;
+    $("#counter").textContent = done + " of " + items.length + " done";
+    $("#lstFoot").hidden = done === 0;
+    $("#lstFootStats").textContent = done ? done + " bought" : "";
+  }
+
+  async function update(item, body){
+    try {
+      const upd = await api("/api/items/" + encodeURIComponent(item.id), { method: "PATCH", body: JSON.stringify(body) });
+      Object.assign(item, upd);
+      render();
+    } catch(e){ toast("Could not save"); }
+  }
+
+  async function remove(item){
+    try { await api("/api/items/" + encodeURIComponent(item.id), { method: "DELETE" }); }
+    catch(e){ toast("Could not delete"); return; }
+    items = items.filter(i => i.id !== item.id);
+    render();
+    toast("“" + item.name + "” deleted", { label: "Undo", onClick: async () => {
+      try {
+        await api("/api/items", { method: "POST", body: JSON.stringify({
+          name: item.name, supermarket: item.supermarket, qty: item.qty, checked: item.checked }) });
+      } catch(e){ toast("Could not undo"); }
+      reload();
+    }});
+  }
+
+  $("#lstGrid").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-act]"); if(!btn) return;
+    const item = items.find(i => i.id === btn.closest(".lst-card").dataset.id); if(!item) return;
+    const act = btn.dataset.act;
+    if(act === "check") update(item, { checked: !item.checked });
+    else if(act === "del") remove(item);
+    else if(act === "plus") update(item, { qty: Math.min(999, item.qty + 1) });
+    else if(act === "minus" && item.qty > 1) update(item, { qty: item.qty - 1 });
+  });
+  // A photo that does not load → icon, not a broken image.
+  $("#lstGrid").addEventListener("error", (e) => {
+    const img = e.target; if(img.tagName !== "IMG") return;
+    const ph = document.createElement("span");
+    ph.className = "lst-img ph"; ph.setAttribute("aria-hidden", "true"); ph.textContent = "🛒";
+    img.replaceWith(ph);
+  }, true);
+
+  $("#lstFilters").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-super]"); if(!b) return;
+    filterSuper = b.dataset.super; render();
+  });
+
+  $("#composer").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nameEl = $("#name"), name = nameEl.value.trim();
+    if(!name) return;
+    const supermarket = $("#lstSuper").value.trim();
+    // Already pending at the same shop → +1 instead of a duplicate line.
+    const same = items.find(i => !i.checked && i.name.toLowerCase() === name.toLowerCase() && i.supermarket === supermarket);
+    try {
+      if(same) await api("/api/items/" + encodeURIComponent(same.id), { method: "PATCH", body: JSON.stringify({ qty: Math.min(999, same.qty + 1) }) });
+      else await api("/api/items", { method: "POST", body: JSON.stringify({ name, supermarket, qty: 1 }) });
+    } catch(err){ toast("Could not add"); return; }
+    nameEl.value = "";
+    nameEl.focus();
+    reload();
+  });
+
+  $("#clearBtn").addEventListener("click", async () => {
+    try { await api("/api/items/clear-checked", { method: "POST" }); } catch(e){ toast("Could not clear"); return; }
+    reload();
+  });
+
+  /* Copy */
+  function buildListText(){
+    const sorted = [...items].sort((a, b) => (a.checked - b.checked) || (a.created_at - b.created_at));
+    const lines = sorted.map(i => (i.checked ? "✓" : "☐") + " " + i.name +
+      (i.qty > 1 ? " ×" + i.qty : "") + (i.supermarket ? " @" + i.supermarket : ""));
+    return "Shopping list\n" + "─".repeat(26) + "\n" + lines.join("\n");
+  }
+  function fallbackCopy(text){
+    // iOS Safari and older Android: must run synchronously inside the user gesture.
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;top:0;left:0;width:2em;height:2em;opacity:0;";
+    document.body.appendChild(ta);
+    const range = document.createRange(); range.selectNodeContents(ta);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    ta.setSelectionRange(0, 999999);
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch(e){}
+    sel.removeAllRanges(); document.body.removeChild(ta);
+    return ok;
+  }
+  $("#copyBtn").addEventListener("click", () => {
+    if(!items.length){ toast("The list is empty"); return; }
+    const text = buildListText();
+    const done = (ok) => toast(ok ? "List copied" : "Could not copy, select the text by hand");
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(() => done(true)).catch(() => done(fallbackCopy(text)));
+    } else done(fallbackCopy(text));
+  });
+
+  /* Autocomplete with product names, so the photo matches by name. */
+  async function loadSuggest(){
+    try {
+      const d = await api("/api/products");
+      $("#lstSuggest").innerHTML = d.items.filter(i => !i.hidden)
+        .map(i => '<option value="' + esc(i.name.trim()) + '">').join("");
+      $("#lstSuperList").innerHTML = d.supermarkets.map(s => '<option value="' + esc(s) + '">').join("");
+    } catch(e){}
+  }
+
+  window.addEventListener("macrocart:refresh", reload);
+  reload();
+  loadSuggest();
+})();
+</script>
+
+<script>
+/* ═══════════ Foods tab: three-column board ═══════════
+   Also owns tab switching. After adding to the list it fires "macrocart:refresh". */
+(() => {
+  const CATS = [["protein", "Protein"], ["carbs", "Carbs"], ["fat", "Fat"]];
+  const CAT_LABEL = Object.fromEntries(CATS);
+
+  let items = [], supers = [], current = null;
+  const selected = new Set();
+
+  /* Tabs */
+  const TABS = ["list", "foods"];
+  function switchTab(name){
+    if(!TABS.includes(name)) name = "list";
+    $$(".tab-btn").forEach(b => b.classList.toggle("is-active", b.dataset.tab === name));
+    $$(".tab-panel").forEach(p => p.classList.toggle("is-active", p.id === "panel-" + name));
+    try { localStorage.setItem("macrocart.tab", name); } catch(e){}
+    if(name === "foods") load();
+    $("#selBar").hidden = name !== "foods" || !selected.size;
+  }
+  $("#tabs").addEventListener("click", (e) => {
+    const b = e.target.closest(".tab-btn"); if(b) switchTab(b.dataset.tab);
+  });
+
+  /* Board */
+  const cheapest = (it) => it.prices.length ? it.prices[0] : null;   // the server sorts by price
+  const starsHtml = (r) => r ? '<span class="stars" aria-label="' + r + ' of 5">' +
+    "★".repeat(r) + '<span class="off">' + "★".repeat(5 - r) + "</span></span>" : "";
+
+  function macroBar(m){
+    const kp = m.p * 4, kc = m.c * 4, kf = m.f * 9, t = kp + kc + kf;
+    if(!t) return '<div class="macro-bar"></div>';
+    const seg = (v, c) => '<span style="width:' + (v / t * 100).toFixed(1) + '%;background:var(' + c + ')"></span>';
+    return '<div class="macro-bar" title="Calories from protein · carbs · fat">' +
+      seg(kp, "--cat-protein") + seg(kc, "--cat-carbs") + seg(kf, "--cat-fat") + "</div>";
+  }
+
+  function visible(){
+    const q = $("#catSearch").value.trim().toLowerCase();
+    const sup = $("#catSuper").value.toLowerCase();
+    const fav = $("#catFavOnly").checked;
+    const hid = $("#catHidden").checked;   // "Hidden" shows only the hidden ones
+    return items.filter(it =>
+      (hid ? it.hidden : !it.hidden) &&
+      (!q || (it.name + " " + it.brand).toLowerCase().includes(q)) &&
+      (!fav || it.favorite) &&
+      (!sup || it.brand.toLowerCase() === sup || it.prices.some(p => p.supermarket.toLowerCase() === sup)));
+  }
+
+  function sorted(list){
+    const name = (a, b) => a.name.localeCompare(b.name);
+    const cmp = {
+      name,
+      rating:  (a, b) => (b.favorite - a.favorite) || (b.rating - a.rating) || name(a, b),
+      protein: (a, b) => (b.per100.p - a.per100.p) || name(a, b),
+      kcal:    (a, b) => (a.per100.kcal - b.per100.kcal) || name(a, b),
+      price:   (a, b) => {
+        const pa = cheapest(a), pb = cheapest(b);
+        return (pa ? pa.price : Infinity) - (pb ? pb.price : Infinity) || name(a, b);
+      },
+    }[$("#catSort").value] || name;
+    return list.slice().sort(cmp);
+  }
+
+  function tile(it){
+    const m = it.per100, best = cheapest(it), on = selected.has(it.id);
+    const key = it.category === "protein" ? ["P", m.p] : it.category === "fat" ? ["F", m.f] : ["C", m.c];
+    const img = it.img
+      ? '<img class="tile-img" loading="lazy" src="/api/products/' + it.id + '/img" alt="">'
+      : '<span class="tile-img ph" aria-hidden="true">🥫</span>';
+    return '<div class="tile' + (on ? " sel" : "") + '" role="button" tabindex="0" aria-pressed="' + on +
+      '" data-id="' + it.id + '" title="' + esc(it.name) + '">' + img +
+      '<span class="tile-check" aria-hidden="true">✓</span>' +
+      '<button class="tile-info" type="button" data-info="' + it.id + '" aria-label="Details of ' + esc(it.name) + '">ⓘ</button>' +
+      (it.in_list ? '<span class="tile-badge">In list</span>' : "") +
+      (it.favorite ? '<span class="tile-fav" aria-label="Favourite">♥</span>' : "") +
+      '<div class="tile-body">' +
+        '<span class="tile-name">' + esc(it.name) + "</span>" +
+        (it.brand ? '<span class="tile-brand">' + esc(it.brand) + "</span>" : "") +
+        macroBar(m) +
+        '<span class="tile-macro"><b>' + key[0] + " " + num(key[1]) + " g</b> · " + num(m.kcal) + " kcal</span>" +
+        ((it.rating || best) ? '<span class="tile-foot">' + starsHtml(it.rating) +
+          (best ? '<span class="price-badge">' + money(best.price) + " " + esc(best.supermarket) + "</span>" : "") + "</span>" : "") +
+      "</div></div>";
+  }
+
+  function render(){
+    const list = visible();
+    $("#catBoard").innerHTML = CATS.map(([k, l]) => {
+      const g = sorted(list.filter(i => i.category === k));
+      return '<section class="col" style="--c:var(--cat-' + k + ')"><div class="col-head">' + l +
+        " <small>" + g.length + '</small></div><div class="col-list">' +
+        (g.length ? g.map(tile).join("") : '<div class="col-empty">Nothing here</div>') + "</div></section>";
+    }).join("");
+    const hint = $("#catHint");
+    hint.hidden = list.length > 0;
+    if(!list.length) hint.textContent = items.length ? "No product matches the filter." :
+      "No products yet. Mount a NutriTrace database or use “Search the internet”.";
+    const nh = items.filter(i => i.hidden).length;
+    $("#catHiddenN").textContent = nh ? "(" + nh + ")" : "";
+    renderSel();
+  }
+
+  function renderSel(){
+    const n = selected.size;
+    $("#selBar").hidden = !n;
+    $("#selCount").textContent = n + " selected";
+  }
+
+  async function load(){
+    let data;
+    try { data = await api("/api/products"); }
+    catch(e){ toast("Could not load the foods"); return; }
+    items = data.items; supers = data.supermarkets;
+    const ids = new Set(items.map(i => i.id));
+    [...selected].forEach(id => { if(!ids.has(id)) selected.delete(id); });
+    const sel = $("#catSuper"), keep = sel.value;
+    sel.innerHTML = '<option value="">All shops</option>' +
+      supers.map(s => '<option value="' + esc(s) + '">' + esc(s) + "</option>").join("");
+    sel.value = supers.includes(keep) ? keep : "";
+    $("#cmSupList").innerHTML = supers.map(s => '<option value="' + esc(s) + '">').join("");
+    render();
+    if(current){ const it = items.find(i => i.id === current.id); if(it){ current = it; renderModal(); } }
+  }
+
+  function toggle(id){
+    selected.has(id) ? selected.delete(id) : selected.add(id);
+    const el = document.querySelector('.tile[data-id="' + id + '"]');
+    if(el){ const on = selected.has(id); el.classList.toggle("sel", on); el.setAttribute("aria-pressed", on); }
+    renderSel();
+  }
+
+  async function addSelected(){
+    if(!selected.size) return;
+    const btn = $("#selAdd"); btn.disabled = true;
+    try {
+      const r = await api("/api/products/to-list", { method: "POST", body: JSON.stringify({ ids: [...selected] }) });
+      const parts = [];
+      if(r.added) parts.push(r.added + " added");
+      if(r.updated) parts.push(r.updated + " already there (+1)");
+      toast(parts.join(", ") || "Nothing to add");
+      selected.clear();
+      window.dispatchEvent(new Event("macrocart:refresh"));
+      await load();
+    } catch(e){ toast(e.message); }
+    finally { btn.disabled = false; }
+  }
+
+  /* Product card (dialog) */
+  function renderModal(){
+    const it = current, m = it.per100, u = it.unit === "ml" ? "100 ml" : "100 g";
+    const img = $("#cmImg");
+    img.hidden = !it.img;
+    if(it.img) img.src = "/api/products/" + it.id + "/img";
+    $("#cmName").textContent = it.name;
+    $("#cmBrand").textContent = (it.brand ? it.brand + " · " : "") + "per " + u;
+    $("#cmMacros").innerHTML =
+      "<div><b>" + num(m.kcal) + "</b>kcal</div><div><b>" + num(m.p) + "</b>protein</div>" +
+      "<div><b>" + num(m.c) + "</b>carbs</div><div><b>" + num(m.f) + "</b>fat</div>";
+    $("#cmCat").innerHTML = '<option value="">Automatic (' + CAT_LABEL[it.auto_category] + ")</option>" +
+      CATS.map(([k, l]) => '<option value="' + k + '">' + l + "</option>").join("");
+    $("#cmCat").value = it.manual_category;
+    $("#cmStars").innerHTML = [1,2,3,4,5].map(n =>
+      '<button type="button" data-star="' + n + '" class="' + (n <= it.rating ? "on" : "") +
+      '" aria-label="' + n + ' stars">★</button>').join("");
+    $("#cmFav").checked = it.favorite;
+    $("#cmHidden").checked = it.hidden;
+    if(document.activeElement !== $("#cmNotes")) $("#cmNotes").value = it.notes;
+    $("#cmPrices").innerHTML = it.prices.length ? it.prices.map((p, i) =>
+      '<div class="cm-price"><span class="s">' + esc(p.supermarket) +
+      (i === 0 && it.prices.length > 1 ? ' <span class="best">cheapest</span>' : "") +
+      "</span><b>" + money(p.price) + '</b><button type="button" data-delprice="' + esc(p.id) +
+      '" title="Remove price" aria-label="Remove price">×</button></div>').join("")
+      : '<p class="hint">No prices yet.</p>';
+  }
+  function openModal(id){
+    current = items.find(i => i.id === id);
+    if(!current) return;
+    // If the brand is a known shop, suggest it.
+    const bs = supers.find(s => s.toLowerCase() === current.brand.toLowerCase());
+    $("#cmSup").value = bs && !current.prices.length ? bs : "";
+    $("#cmPrice").value = "";
+    renderModal();
+    $("#catBack").hidden = false;
+  }
+  function closeModal(){ $("#catBack").hidden = true; current = null; }
+
+  async function patch(body){
+    if(!current) return;
+    try { await api("/api/products/" + current.id, { method: "PATCH", body: JSON.stringify(body) }); }
+    catch(e){ toast(e.message); }
+    await load();
+  }
+
+  /* Events */
+  ["#catSearch", "#catSuper", "#catSort", "#catFavOnly"].forEach(s =>
+    $(s).addEventListener(s === "#catSearch" ? "input" : "change", render));
+  $("#catHidden").addEventListener("change", () => { selected.clear(); render(); });
+  $("#catBoard").addEventListener("click", (e) => {
+    const info = e.target.closest("[data-info]");
+    if(info){ openModal(Number(info.dataset.info)); return; }
+    const t = e.target.closest(".tile"); if(t) toggle(Number(t.dataset.id));
+  });
+  $("#catBoard").addEventListener("keydown", (e) => {
+    if(e.key !== "Enter" && e.key !== " ") return;
+    const t = e.target.closest(".tile");
+    if(t && e.target === t){ e.preventDefault(); toggle(Number(t.dataset.id)); }
+  });
+  $("#selAdd").addEventListener("click", addSelected);
+  $("#selClear").addEventListener("click", () => { selected.clear(); render(); });
+  $("#cmClose").addEventListener("click", closeModal);
+  $("#catBack").addEventListener("click", (e) => { if(e.target.id === "catBack") closeModal(); });
+  $("#cmCat").addEventListener("change", (e) => patch({ category: e.target.value }));
+  $("#cmFav").addEventListener("change", (e) => patch({ favorite: e.target.checked }));
+  $("#cmHidden").addEventListener("change", (e) => { if(current) selected.delete(current.id); patch({ hidden: e.target.checked }); });
+  $("#cmStars").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-star]"); if(!b || !current) return;
+    const n = Number(b.dataset.star);
+    patch({ rating: n === current.rating ? 0 : n });   // tapping the same star clears it
+  });
+  $("#cmNotes").addEventListener("change", (e) => patch({ notes: e.target.value }));
+  $("#cmAddPrice").addEventListener("click", async () => {
+    if(!current) return;
+    const body = { supermarket: $("#cmSup").value.trim(), price: $("#cmPrice").value };
+    try { await api("/api/products/" + current.id + "/prices", { method: "POST", body: JSON.stringify(body) }); }
+    catch(e){ toast(e.message); return; }
+    $("#cmPrice").value = "";
+    await load();
+  });
+  $("#cmPrices").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-delprice]"); if(!b) return;
+    try { await api("/api/prices/" + encodeURIComponent(b.dataset.delprice), { method: "DELETE" }); }
+    catch(err){ toast(err.message); return; }
+    await load();
+  });
+
+  /* A photo that does not load: in the search, try the product page photo; otherwise an icon. */
+  const placeholder = (img, cls) => {
+    const ph = document.createElement("span");
+    ph.className = cls; ph.setAttribute("aria-hidden", "true"); ph.textContent = "🥫";
+    img.replaceWith(ph);
+  };
+  $("#catBoard").addEventListener("error", (e) => {
+    if(e.target.tagName === "IMG") placeholder(e.target, "tile-img ph");
+  }, true);
+  $("#cmImg").addEventListener("error", () => { $("#cmImg").hidden = true; });
+
+  /* Internet search (Open Food Facts) */
+  let offItems = [], offOpenCode = null, offPage = 1, offPages = 1, offQuery = "";
+  function offCard(it){
+    const m = it.per100, open = offOpenCode === it.code;
+    const src = it.img_small || it.img;
+    return '<div class="off-item' + (open ? " open" : "") + '" data-code="' + esc(it.code) + '">' +
+      '<img loading="lazy" src="' + (src ? esc(src) : "/api/off/img/" + encodeURIComponent(it.code)) +
+      '" alt="" referrerpolicy="no-referrer"' + (src ? "" : ' data-fb="1"') + ">" +
+      '<div class="tile-body">' +
+        '<span class="tile-name">' + esc(it.name) + "</span>" +
+        ((it.brand || it.quantity) ? '<span class="tile-brand">' + esc([it.brand, it.quantity].filter(Boolean).join(" · ")) + "</span>" : "") +
+        macroBar(m) +
+        '<span class="tile-macro">' + num(m.kcal) + " kcal · P " + num(m.p) + " · C " + num(m.c) + " · F " + num(m.f) + "</span>" +
+      "</div>" +
+      (it.added ? '<div class="off-added">✓ Added</div>' : open ? '<div class="off-pick">' + CATS.map(([k, l]) =>
+        '<button type="button" data-addcat="' + k + '" style="--c:var(--cat-' + k + ')" class="' +
+        (k === it.auto_category ? "sug" : "") + '">' + l + "</button>").join("") + "</div>" : "") +
+      "</div>";
+  }
+  function offRender(){ $("#offList").innerHTML = offItems.map(offCard).join(""); }
+  async function offSearch(more){
+    if(!more){ offQuery = $("#offQ").value.trim(); offPage = 1; offItems = []; offOpenCode = null; } else offPage++;
+    if(offQuery.length < 2){ $("#offHint").textContent = "Type at least 2 letters."; return; }
+    $("#offHint").textContent = "Searching Open Food Facts…";
+    $("#offGo").disabled = true; $("#offMore").hidden = true;
+    try {
+      const d = await api("/api/off/search?q=" + encodeURIComponent(offQuery) + "&page=" + offPage);
+      offItems = offItems.concat(d.items); offPages = d.page_count || 1;
+      $("#offHint").textContent = offItems.length ? offItems.length + " internet results." : "No results on Open Food Facts.";
+      $("#offMore").hidden = !d.items.length || offPage >= offPages;
+    } catch(e){ $("#offHint").textContent = e.message; if(more) offPage--; }
+    finally { $("#offGo").disabled = false; }
+    offRender();
+  }
+  $("#offList").addEventListener("error", (e) => {
+    const img = e.target; if(img.tagName !== "IMG") return;
+    if(!img.dataset.fb){ img.dataset.fb = "1"; img.src = "/api/off/img/" + encodeURIComponent(img.closest(".off-item").dataset.code); }
+    else placeholder(img, "ph");
+  }, true);
+  $("#offOpen").addEventListener("click", () => { $("#offBack").hidden = false; $("#offQ").focus(); });
+  $("#offClose").addEventListener("click", () => { $("#offBack").hidden = true; });
+  $("#offBack").addEventListener("click", (e) => { if(e.target.id === "offBack") $("#offBack").hidden = true; });
+  $("#offForm").addEventListener("submit", (e) => { e.preventDefault(); offSearch(false); });
+  $("#offMore").addEventListener("click", () => offSearch(true));
+  $("#offList").addEventListener("click", async (e) => {
+    const card = e.target.closest(".off-item"); if(!card) return;
+    const it = offItems.find(i => i.code === card.dataset.code); if(!it || it.added) return;
+    const b = e.target.closest("[data-addcat]");
+    if(!b){ offOpenCode = offOpenCode === it.code ? null : it.code; offRender(); return; }
+    b.disabled = true;
+    try {
+      const r = await api("/api/off/add", { method: "POST", body: JSON.stringify({ code: it.code, category: b.dataset.addcat }) });
+      it.added = true; offOpenCode = null;
+      toast("“" + r.name + "” added to " + CAT_LABEL[r.category]);
+      offRender();
+      load();
+    } catch(err){ toast(err.message); b.disabled = false; }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if(e.key !== "Escape") return;
+    if(!$("#offBack").hidden) $("#offBack").hidden = true;
+    else if(!$("#catBack").hidden) closeModal();
+  });
+
+  let saved = "list";
+  try { saved = localStorage.getItem("macrocart.tab") || "list"; } catch(e){}
+  if(saved !== "list") switchTab(saved);
+})();
+</script>
+</body>
+</html>

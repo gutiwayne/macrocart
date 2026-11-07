@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Python and front-end checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compile
+        run: python3 -m py_compile app.py
+
+      - name: Pyflakes
+        run: |
+          python3 -m pip install --quiet pyflakes
+          python3 -m pyflakes app.py
+
+      - name: JavaScript syntax
+        run: |
+          python3 - <<'EOF'
+          import re, pathlib
+          html = pathlib.Path("static/index.html").read_text(encoding="utf-8")
+          for n, js in enumerate(re.findall(r"<script>(.*?)</script>", html, re.S)):
+              pathlib.Path(f"/tmp/block{n}.js").write_text(js, encoding="utf-8")
+          EOF
+          for f in /tmp/block*.js; do node --check "$f"; echo "$f ok"; done
+
+  docker:
+    name: Docker Compose smoke test
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build and start
+        run: docker compose up -d --build
+
+      - name: Wait until healthy
+        run: |
+          id="$(docker compose ps -q macrocart)"
+          for i in $(seq 1 30); do
+            status="$(docker inspect -f '{{.State.Health.Status}}' "$id")"
+            echo "health: $status"
+            [ "$status" = healthy ] && exit 0
+            sleep 3
+          done
+          docker compose logs
+          exit 1
+
+      - name: Endpoints answer
+        run: |
+          for path in / /api/items /api/products; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:5000$path")"
+            echo "$path $code"
+            [ "$code" = 200 ]
+          done
+          curl -s -X POST -H 'Content-Type: application/json' -d '{"name":"Test"}' http://127.0.0.1:5000/api/items | grep -q '"Test"'
+
+      - name: Logs
+        if: always()
+        run: docker compose logs
+
+      - name: Stop
+        if: always()
+        run: docker compose down -v
