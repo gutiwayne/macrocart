@@ -24,7 +24,7 @@ EAN-13. Files copied unmodified from the npm packages.
 
 ## Base image
 
-[`python:3.11-slim`](https://hub.docker.com/_/python) — Python Software Foundation
+[`python:3.15-slim`](https://hub.docker.com/_/python) — Python Software Foundation
 License, on Debian (various free licenses).
 
 ## Open Food Facts
