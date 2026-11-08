@@ -19,7 +19,7 @@ macrocart normalises it to 100 g/ml.
 ## Product ids
 
 - NutriTrace foods keep their `foods.id`.
-- Open Food Facts products get `1_000_000_000 + catalog_extra.id` (`EXTRA_BASE`), so
+- Open Food Facts and hand-typed products get `1_000_000_000 + catalog_extra.id` (`EXTRA_BASE`), so
   the two never clash in `catalog_meta` and `catalog_prices`.
 - Products are de-duplicated by name+brand; NutriTrace wins over an internet copy.
 
@@ -35,6 +35,29 @@ macrocart normalises it to 100 g/ml.
   the product page photo, cached in memory up to 500 entries) and finally shows an
   icon. Results whose barcode has no product page cannot be added.
 
+## Barcode scanner
+
+- `GET /api/off/product/<barcode>` checks `catalog_extra` first (a product added
+  before, from OFF or by hand), then OFF. Adding still goes through
+  `POST /api/off/add`, which fetches the product again.
+- The page uses the browser's `BarcodeDetector` when it reads EAN-13 (Chrome on
+  Android, macOS, ChromeOS); otherwise it loads the bundled ZXing ponyfill from
+  `static/vendor/` on first use, with `locateFile` pointing the `.wasm` there
+  instead of the library's CDN default. The ponyfill checks the wasm's SHA-256.
+- A QR code is accepted when it is a GS1 Digital Link (`…/01/<GTIN>…`); a GTIN-14
+  with a leading zero becomes the EAN-13 that OFF uses.
+- `/` sends `Permissions-Policy: camera=(self)`: without it, a proxy policy of
+  `camera=()` would block `getUserMedia`.
+
+## Foods typed by hand
+
+Stored in `catalog_extra` like OFF products (same id range, prices, rating,
+notes), with no photo. The `code` column is the barcode if one was given,
+otherwise `manual-<random>`, which never matches the barcode pattern, so OFF
+lookups and image fallbacks ignore it. A barcode already on the board is refused
+(409). If OFF later learns a hand-typed barcode, adding it from the search
+replaces the hand-typed data with OFF's.
+
 ## Photos
 
 - Served with an explicit MIME type: slim Python images do not know `webp`/`avif`,
@@ -48,7 +71,8 @@ macrocart normalises it to 100 g/ml.
 
 ## Front end
 
-One static `static/index.html` with no build step. The two tabs keep separate
+One static `static/index.html` with no build step; the only other front-end
+files are the vendored barcode reader. The two tabs keep separate
 state in separate `<script>` blocks; the board tells the list to reload with a
 `macrocart:refresh` event.
 

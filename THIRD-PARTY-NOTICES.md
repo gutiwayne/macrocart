@@ -1,8 +1,19 @@
 # Third-party notices
 
 macrocart's own code is licensed under the AGPL-3.0 (see [`LICENSE`](LICENSE)).
-This repository bundles no third-party code, fonts or images. The items below are
-used at build time or at runtime.
+This repository bundles only the barcode reader below (no third-party fonts or
+images). The other items are used at build time or at runtime.
+
+## Barcode reader (bundled in `static/vendor/`)
+
+Loaded by the browser only when it has no built-in `BarcodeDetector` that reads
+EAN-13. Files copied unmodified from the npm packages.
+
+| File | From | License |
+|---|---|---|
+| `barcode-detector.js` | [barcode-detector](https://github.com/Sec-ant/barcode-detector) 3.2.3, `dist/iife/ponyfill.js` | MIT — [`LICENSE-barcode-detector`](static/vendor/LICENSE-barcode-detector) |
+| `zxing_reader.wasm` | [zxing-wasm](https://github.com/Sec-ant/zxing-wasm) 3.1.6, `dist/reader/zxing_reader.wasm` | MIT — [`LICENSE-zxing-wasm`](static/vendor/LICENSE-zxing-wasm) |
+| (compiled into `zxing_reader.wasm`) | [ZXing-C++](https://github.com/zxing-cpp/zxing-cpp) and zxing-wasm's `ZXingWasm.cpp` | Apache-2.0 — [`LICENSE-zxing-cpp`](static/vendor/LICENSE-zxing-cpp) |
 
 ## Python dependencies (installed into the Docker image, not bundled here)
 

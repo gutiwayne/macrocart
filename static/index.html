@@ -171,6 +171,11 @@
   .off-pick button.sug { opacity: 1; box-shadow: 0 0 0 2px var(--text) inset; }
   @media (prefers-color-scheme: dark) { .off-pick button { color: #1A1419; } }
   .off-added { margin: 0 8px 8px; text-align: center; font-size: .8rem; font-weight: 600; color: var(--success); }
+  .scan-video { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; background: #000; display: block; margin-bottom: 10px; }
+  .scan-video[hidden] { display: none; }
+  .man-macros { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+  .man-macros label { font-size: .8rem; font-weight: 600; color: var(--muted); }
+  .man-macros .cm-input { margin-top: 4px; padding: 8px; }
 
   @media (max-width: 560px) {
     .tab-btn span { display: none; }
@@ -239,8 +244,9 @@
         <option value="price">Cheapest</option>
       </select>
       <label class="toggle"><input type="checkbox" id="catFavOnly"> ♥ Favourites</label>
-      <label class="toggle"><input type="checkbox" id="catHidden"> Hidden <span id="catHiddenN"></span></label>
       <button class="btn" type="button" id="offOpen">🌐 Search the internet</button>
+      <button class="btn" type="button" id="scanOpen">📷 Scan</button>
+      <button class="btn ghost" type="button" id="manOpen">＋ New food</button>
     </div>
     <p class="hint">Tap cards to pick them, then add them to the list. <b>ⓘ</b> opens the card: rating, notes and prices.</p>
     <p class="hint" id="catHint" hidden></p>
@@ -264,8 +270,51 @@
     <p class="hint" id="offHint"></p>
     <div class="off-grid" id="offList"></div>
     <button class="btn ghost" type="button" id="offMore" hidden style="width:100%;margin-top:10px">More results</button>
+    <button class="btn ghost" type="button" id="offManual" style="width:100%;margin-top:8px">Not there? Add it by hand</button>
     <button class="btn ghost" type="button" id="offClose" style="width:100%;margin-top:8px">Close</button>
   </div>
+</div>
+
+<div class="modal-back" id="scanBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="scanTitle">
+    <h3 id="scanTitle">Scan a barcode</h3>
+    <p class="sub">Point the camera at the barcode or QR code on the package.</p>
+    <video id="scanVideo" class="scan-video" playsinline muted></video>
+    <p class="hint" id="scanHint"></p>
+    <form class="field-row" id="scanForm" autocomplete="off">
+      <input type="text" id="scanCode" inputmode="numeric" pattern="[0-9]{4,20}" maxlength="20" placeholder="…or type the barcode number" aria-label="Barcode">
+      <button class="btn" type="submit">Look up</button>
+    </form>
+    <button class="btn ghost" type="button" id="scanClose" style="width:100%;margin-top:8px">Close</button>
+  </div>
+</div>
+
+<div class="modal-back" id="manBack" hidden>
+  <form class="modal" id="manForm" role="dialog" aria-modal="true" aria-labelledby="manTitle" autocomplete="off">
+    <h3 id="manTitle">New food</h3>
+    <p class="sub">For products that are not on Open Food Facts. Macros per 100 g (or ml).</p>
+    <label class="cm-lbl" for="manName">Name</label>
+    <input type="text" id="manName" class="cm-input" maxlength="120" required>
+    <label class="cm-lbl" for="manBrand">Brand</label>
+    <input type="text" id="manBrand" class="cm-input" maxlength="80">
+    <label class="cm-lbl" for="manCode">Barcode (optional)</label>
+    <input type="text" id="manCode" class="cm-input" inputmode="numeric" pattern="[0-9]{4,20}" maxlength="20">
+    <div class="man-macros">
+      <label>kcal<input type="text" id="manKcal" class="cm-input" inputmode="decimal" maxlength="6"></label>
+      <label>Protein<input type="text" id="manP" class="cm-input" inputmode="decimal" maxlength="5"></label>
+      <label>Carbs<input type="text" id="manC" class="cm-input" inputmode="decimal" maxlength="5"></label>
+      <label>Fat<input type="text" id="manF" class="cm-input" inputmode="decimal" maxlength="5"></label>
+    </div>
+    <label class="cm-lbl" for="manCat">Column</label>
+    <select id="manCat" class="cm-input">
+      <option value="">Automatic (from the macros)</option>
+      <option value="protein">Protein</option>
+      <option value="carbs">Carbs</option>
+      <option value="fat">Fat</option>
+    </select>
+    <button class="btn" type="submit" id="manSave" style="width:100%;margin-top:12px">Save</button>
+    <button class="btn ghost" type="button" id="manClose" style="width:100%;margin-top:8px">Close</button>
+  </form>
 </div>
 
 <div class="modal-back" id="catBack" hidden>
@@ -283,7 +332,6 @@
     <span class="cm-lbl">Rating</span>
     <div class="cm-stars" id="cmStars"></div>
     <label class="toggle"><input type="checkbox" id="cmFav"> Favourite</label>
-    <label class="toggle"><input type="checkbox" id="cmHidden"> Hide from the board</label>
     <label class="cm-lbl" for="cmNotes">Notes</label>
     <textarea id="cmNotes" class="cm-input" rows="3" maxlength="500" placeholder="Taste, how you have it, alternatives…"></textarea>
     <span class="cm-lbl">Prices per shop</span>
@@ -332,7 +380,9 @@ async function api(path, opts = {}){
   if(!res.ok){
     let msg = "Error " + res.status;
     try { const j = await res.json(); if(j && j.error) msg = j.error; } catch(e){}
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
   }
   return res.status === 204 ? null : res.json();
 }
@@ -544,9 +594,8 @@ async function api(path, opts = {}){
     const q = $("#catSearch").value.trim().toLowerCase();
     const sup = $("#catSuper").value.toLowerCase();
     const fav = $("#catFavOnly").checked;
-    const hid = $("#catHidden").checked;   // "Hidden" shows only the hidden ones
     return items.filter(it =>
-      (hid ? it.hidden : !it.hidden) &&
+      !it.hidden &&
       (!q || (it.name + " " + it.brand).toLowerCase().includes(q)) &&
       (!fav || it.favorite) &&
       (!sup || it.brand.toLowerCase() === sup || it.prices.some(p => p.supermarket.toLowerCase() === sup)));
@@ -600,9 +649,7 @@ async function api(path, opts = {}){
     const hint = $("#catHint");
     hint.hidden = list.length > 0;
     if(!list.length) hint.textContent = items.length ? "No product matches the filter." :
-      "No products yet. Mount a NutriTrace database or use “Search the internet”.";
-    const nh = items.filter(i => i.hidden).length;
-    $("#catHiddenN").textContent = nh ? "(" + nh + ")" : "";
+      "No products yet. Mount a NutriTrace database, use “Search the internet”, “Scan” or “New food”.";
     renderSel();
   }
 
@@ -669,7 +716,6 @@ async function api(path, opts = {}){
       '<button type="button" data-star="' + n + '" class="' + (n <= it.rating ? "on" : "") +
       '" aria-label="' + n + ' stars">★</button>').join("");
     $("#cmFav").checked = it.favorite;
-    $("#cmHidden").checked = it.hidden;
     if(document.activeElement !== $("#cmNotes")) $("#cmNotes").value = it.notes;
     $("#cmPrices").innerHTML = it.prices.length ? it.prices.map((p, i) =>
       '<div class="cm-price"><span class="s">' + esc(p.supermarket) +
@@ -700,7 +746,6 @@ async function api(path, opts = {}){
   /* Events */
   ["#catSearch", "#catSuper", "#catSort", "#catFavOnly"].forEach(s =>
     $(s).addEventListener(s === "#catSearch" ? "input" : "change", render));
-  $("#catHidden").addEventListener("change", () => { selected.clear(); render(); });
   $("#catBoard").addEventListener("click", (e) => {
     const info = e.target.closest("[data-info]");
     if(info){ openModal(Number(info.dataset.info)); return; }
@@ -717,7 +762,6 @@ async function api(path, opts = {}){
   $("#catBack").addEventListener("click", (e) => { if(e.target.id === "catBack") closeModal(); });
   $("#cmCat").addEventListener("change", (e) => patch({ category: e.target.value }));
   $("#cmFav").addEventListener("change", (e) => patch({ favorite: e.target.checked }));
-  $("#cmHidden").addEventListener("change", (e) => { if(current) selected.delete(current.id); patch({ hidden: e.target.checked }); });
   $("#cmStars").addEventListener("click", (e) => {
     const b = e.target.closest("[data-star]"); if(!b || !current) return;
     const n = Number(b.dataset.star);
@@ -808,10 +852,147 @@ async function api(path, opts = {}){
       load();
     } catch(err){ toast(err.message); b.disabled = false; }
   });
+  $("#offManual").addEventListener("click", () => {
+    $("#offBack").hidden = true;
+    openManual({ name: $("#offQ").value.trim() });
+  });
+
+  /* Barcode scanner: the browser's own BarcodeDetector when it reads EAN-13,
+     otherwise the bundled ZXing WebAssembly ponyfill (static/vendor), loaded on first use. */
+  const SCAN_FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "qr_code"];
+  let detectorP = null, scanStream = null, scanTimer = null;
+  function loadScript(src){
+    return new Promise((ok, ko) => {
+      const s = document.createElement("script");
+      s.src = src; s.onload = ok; s.onerror = () => ko(new Error("Could not load the scanner."));
+      document.head.appendChild(s);
+    });
+  }
+  async function makeDetector(){
+    if("BarcodeDetector" in window){
+      try {
+        const have = await window.BarcodeDetector.getSupportedFormats();
+        if(have.includes("ean_13")) return new window.BarcodeDetector({ formats: SCAN_FORMATS.filter(f => have.includes(f)) });
+      } catch(e){}
+    }
+    if(!window.BarcodeDetectionAPI) await loadScript("/static/vendor/barcode-detector.js");
+    const lib = window.BarcodeDetectionAPI;
+    await lib.prepareZXingModule({
+      overrides: { locateFile: (path, prefix) => path.endsWith(".wasm") ? "/static/vendor/" + path : prefix + path },
+      fireImmediately: true,
+    });
+    return new lib.BarcodeDetector({ formats: SCAN_FORMATS });
+  }
+  /* A plain barcode, or the GTIN inside a GS1 Digital Link QR (…/01/<gtin>…). */
+  function toBarcode(raw){
+    raw = String(raw || "").trim();
+    if(/^\d{4,20}$/.test(raw)) return raw;
+    const m = raw.match(/\/01\/(\d{8,14})(?:[/?#]|$)/);
+    return m ? m[1].replace(/^0+(?=\d{13}$)/, "") : "";
+  }
+  function scanStop(){
+    clearTimeout(scanTimer); scanTimer = null;
+    if(scanStream){ scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+    $("#scanVideo").srcObject = null;
+  }
+  function scanClose(){ scanStop(); $("#scanBack").hidden = true; }
+  async function scanOpen(){
+    const v = $("#scanVideo"), hint = $("#scanHint");
+    $("#scanCode").value = "";
+    $("#scanBack").hidden = false;
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      v.hidden = true; hint.textContent = "The camera only works over HTTPS. Type the barcode instead."; return;
+    }
+    v.hidden = false; hint.textContent = "Starting the camera…";
+    let det, stream;
+    try {
+      detectorP = detectorP || makeDetector().catch(e => { detectorP = null; throw e; });
+      [det, stream] = await Promise.all([detectorP,
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })]);
+    } catch(e){
+      v.hidden = true;
+      hint.textContent = (e.name === "NotAllowedError" ? "No permission to use the camera." :
+        e.name === "NotFoundError" ? "No camera found." : e.message || "The camera is not available.") + " Type the barcode instead.";
+      return;
+    }
+    if($("#scanBack").hidden){ stream.getTracks().forEach(t => t.stop()); return; }   // closed meanwhile
+    scanStream = stream; v.srcObject = stream;
+    try { await v.play(); } catch(e){}
+    hint.textContent = "Looking for a barcode…";
+    const tick = async () => {
+      if(!scanStream) return;
+      try {
+        if(v.readyState >= 2){
+          const found = await det.detect(v);
+          const code = found.map(c => toBarcode(c.rawValue)).find(Boolean);
+          if(code){ scanStop(); lookup(code); return; }
+          if(found.length) hint.textContent = "That code is not a product barcode.";
+        }
+      } catch(e){}
+      if(scanStream) scanTimer = setTimeout(tick, 200);
+    };
+    tick();
+  }
+  async function lookup(code){
+    const hint = $("#scanHint");
+    hint.textContent = "Looking up " + code + " on Open Food Facts…";
+    let d;
+    try { d = await api("/api/off/product/" + encodeURIComponent(code)); }
+    catch(e){
+      if(e.status === 404){ scanClose(); openManual({ code }); toast("Not on Open Food Facts: add it by hand"); }
+      else hint.textContent = e.message;
+      return;
+    }
+    scanClose();
+    if(d.local){ await load(); openModal(d.id); toast("“" + d.name + "” is already on the board"); return; }
+    offItems = [d.item]; offOpenCode = d.item.code; offPage = offPages = 1;
+    $("#offQ").value = ""; $("#offMore").hidden = true;
+    $("#offHint").textContent = "Barcode " + code + ": pick its column.";
+    offRender();
+    $("#offBack").hidden = false;
+  }
+  $("#scanOpen").addEventListener("click", scanOpen);
+  $("#scanClose").addEventListener("click", scanClose);
+  $("#scanBack").addEventListener("click", (e) => { if(e.target.id === "scanBack") scanClose(); });
+  $("#scanForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const code = toBarcode($("#scanCode").value);
+    if(!code){ $("#scanHint").textContent = "Type the digits under the barcode."; return; }
+    scanStop(); lookup(code);
+  });
+
+  /* Food typed by hand (not on Open Food Facts) */
+  function openManual(pre = {}){
+    $("#manForm").reset();
+    $("#manName").value = pre.name || "";
+    $("#manCode").value = pre.code || "";
+    $("#manBack").hidden = false;
+    $("#manName").focus();
+  }
+  function closeManual(){ $("#manBack").hidden = true; }
+  $("#manOpen").addEventListener("click", () => openManual());
+  $("#manClose").addEventListener("click", closeManual);
+  $("#manBack").addEventListener("click", (e) => { if(e.target.id === "manBack") closeManual(); });
+  $("#manForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const val = (s) => $(s).value.trim();
+    const body = { name: val("#manName"), brand: val("#manBrand"), code: val("#manCode"),
+      kcal: val("#manKcal"), p: val("#manP"), c: val("#manC"), f: val("#manF"), category: $("#manCat").value };
+    $("#manSave").disabled = true;
+    try {
+      const r = await api("/api/products/custom", { method: "POST", body: JSON.stringify(body) });
+      closeManual();
+      toast("“" + r.name + "” added to " + CAT_LABEL[r.category]);
+      load();
+    } catch(err){ toast(err.message); }
+    finally { $("#manSave").disabled = false; }
+  });
 
   document.addEventListener("keydown", (e) => {
     if(e.key !== "Escape") return;
-    if(!$("#offBack").hidden) $("#offBack").hidden = true;
+    if(!$("#scanBack").hidden) scanClose();
+    else if(!$("#manBack").hidden) closeManual();
+    else if(!$("#offBack").hidden) $("#offBack").hidden = true;
     else if(!$("#catBack").hidden) closeModal();
   });
 

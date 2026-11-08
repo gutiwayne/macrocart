@@ -11,6 +11,7 @@ import re
 import sqlite3
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -629,6 +630,76 @@ def off_img(code):
     return resp
 
 
+@app.get("/api/off/product/<code>")
+def off_product(code):
+    """Look up a scanned barcode. A product already on the board (from Open Food
+    Facts or typed by hand with that barcode) answers without asking OFF."""
+    if not _CODE_RE.match(code):
+        return jsonify({"error": "Invalid barcode"}), 400
+    row = _db().execute("SELECT id, name FROM catalog_extra WHERE code=?", (code,)).fetchone()
+    if row:
+        return jsonify({"found": True, "local": True, "id": row["id"] + EXTRA_BASE, "name": row["name"]})
+    try:
+        prod = _off_get(OFF_PRODUCT.format(code) + "?fields=" + OFF_FIELDS).get("product")
+    except urllib.error.HTTPError as e:
+        prod = None if e.code == 404 else False
+    except Exception as e:
+        app.logger.warning("Open Food Facts product %s failed: %s", code, e)
+        prod = False
+    if prod is False:
+        return jsonify({"error": "Could not reach Open Food Facts"}), 502
+    it = _off_norm({**prod, "code": code}) if prod else None
+    if not it or not it["name"]:
+        return jsonify({"found": False, "code": code, "error": "Not on Open Food Facts"}), 404
+    it["per100"] = _per100(json.dumps(it.pop("nutrition")), None)
+    it["auto_category"] = _auto_category(it["per100"])
+    it["added"] = False
+    return jsonify({"found": True, "local": False, "item": it})
+
+
+# ─────────────────────────── API: products typed by hand ───────────────────────────
+
+@app.post("/api/products/custom")
+def add_custom_product():
+    """A product that is not on Open Food Facts: name, brand, optional barcode and
+    macros per 100 g. Stored in catalog_extra like an internet product, so it gets
+    prices, rating and notes the same way. Without a barcode it gets a 'manual-' code."""
+    data = request.get_json(silent=True) or {}
+    name = _txt(data.get("name"), NAME_MAX)
+    brand = _txt(data.get("brand"), 80)
+    code = str(data.get("code") or "").strip()
+    cat = str(data.get("category") or "")
+    if not name:
+        return jsonify({"error": "Name required"}), 400
+    if code and not _CODE_RE.match(code):
+        return jsonify({"error": "Invalid barcode"}), 400
+    if cat and cat not in CATEGORIES:
+        return jsonify({"error": "Pick protein, carbs or fat"}), 400
+
+    def macro(key, top):
+        v = data.get(key)
+        if isinstance(v, str):
+            v = v.strip().replace(",", ".")
+        return round(min(_num(v), top), 1)
+
+    nutrition = {"calories": macro("kcal", 900), "proteins": macro("p", 100),
+                 "carbohydrates": macro("c", 100), "fat": macro("f", 100)}
+    with _lock:
+        conn = _db()
+        if code and conn.execute("SELECT 1 FROM catalog_extra WHERE code=?", (code,)).fetchone():
+            return jsonify({"error": "A product with that barcode is already on the board"}), 409
+        cur = conn.execute(
+            "INSERT INTO catalog_extra (code, name, brand, nutrition, img_url, created_at) VALUES (?,?,?,?,?,?)",
+            (code or "manual-" + uuid.uuid4().hex[:12], name, brand, json.dumps(nutrition), "", time.time()))
+        pid = cur.lastrowid + EXTRA_BASE
+        conn.execute("INSERT OR IGNORE INTO catalog_meta (product_id) VALUES (?)", (pid,))
+        conn.execute("UPDATE catalog_meta SET category=?, hidden=0, updated_at=? WHERE product_id=?",
+                     (cat, time.time(), pid))
+        conn.commit()
+    per = _per100(json.dumps(nutrition), None)
+    return jsonify({"id": pid, "name": name, "category": cat or _auto_category(per)})
+
+
 init_db()
 
 
@@ -636,7 +707,11 @@ init_db()
 def index():
     with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "index.html"),
               encoding="utf-8") as f:
-        return app.response_class(f.read(), mimetype="text/html")
+        resp = app.response_class(f.read(), mimetype="text/html")
+    # The barcode scanner needs the camera. Sent by the app so that a reverse proxy
+    # adding a stricter Permissions-Policy only when none is set leaves it alone.
+    resp.headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=()"
+    return resp
 
 
 if __name__ == "__main__":
