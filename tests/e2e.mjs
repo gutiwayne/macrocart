@@ -133,6 +133,7 @@ try {
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
   await ctx.setOffline(true);
   await page.reload();
+  await tab(page, "list");
   await page.waitForSelector(".lst-card .lst-name:text('Milk')");
   await ctx.setOffline(false);
 
