@@ -1,8 +1,0 @@
-.git
-.github
-.env
-data
-__pycache__
-*.pyc
-*.db
-*.db-*

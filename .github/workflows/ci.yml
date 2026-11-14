@@ -11,74 +11,38 @@ permissions:
 
 jobs:
   check:
-    name: Python and front-end checks
+    name: JavaScript syntax
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: Compile
-        run: python3 -m py_compile app.py
-
-      - name: Pyflakes
+      - name: Scripts and inline blocks
         run: |
-          python3 -m pip install --quiet pyflakes
-          python3 -m pyflakes app.py
-
-      - name: JavaScript syntax
-        run: |
-          python3 - <<'EOF'
+          for f in web/js/*.js web/sw.js tests/*.mjs; do node --check "$f"; echo "$f ok"; done
+          python3 - <<'PY'
           import re, pathlib
-          html = pathlib.Path("static/index.html").read_text(encoding="utf-8")
+          html = pathlib.Path("web/index.html").read_text(encoding="utf-8")
           for n, js in enumerate(re.findall(r"<script>(.*?)</script>", html, re.S)):
               pathlib.Path(f"/tmp/block{n}.js").write_text(js, encoding="utf-8")
-          EOF
+          PY
           for f in /tmp/block*.js; do node --check "$f"; echo "$f ok"; done
+          python3 -c "import json; json.load(open('web/manifest.webmanifest'))"
 
-  docker:
-    name: Docker Compose smoke test
+  e2e:
+    name: Browser test (Playwright)
     runs-on: ubuntu-latest
     needs: check
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build and start
-        run: docker compose up -d --build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
-      - name: Wait until healthy
+      - name: Install Playwright
         run: |
-          id="$(docker compose ps -q macrocart)"
-          for i in $(seq 1 30); do
-            status="$(docker inspect -f '{{.State.Health.Status}}' "$id")"
-            echo "health: $status"
-            [ "$status" = healthy ] && exit 0
-            sleep 3
-          done
-          docker compose logs
-          exit 1
+          npm install --no-save --no-package-lock playwright@1.49.1
+          npx playwright install --with-deps chromium
 
-      - name: Endpoints answer
-        run: |
-          for path in / /api/items /api/products; do
-            code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:5000$path")"
-            echo "$path $code"
-            [ "$code" = 200 ]
-          done
-          curl -s -X POST -H 'Content-Type: application/json' -d '{"name":"Test"}' http://127.0.0.1:5000/api/items | grep -q '"Test"'
-          curl -s http://127.0.0.1:5000/api/products | grep -q '"items":\[\]'
-          # A recipe typed by hand, edited, then deleted.
-          id="$(curl -s -X POST -H 'Content-Type: application/json' \
-            -d '{"kind":"recipe","name":"Lentils","unit":"serving","kcal":"650","p":"38"}' \
-            http://127.0.0.1:5000/api/products/custom | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
-          curl -s http://127.0.0.1:5000/api/products | grep -q '"kind":"recipe"'
-          curl -s -X PATCH -H 'Content-Type: application/json' -d '{"name":"Lentil stew"}' \
-            "http://127.0.0.1:5000/api/products/$id" | grep -q '"ok":true'
-          code="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "http://127.0.0.1:5000/api/products/$id")"
-          [ "$code" = 204 ]
-
-      - name: Logs
-        if: always()
-        run: docker compose logs
-
-      - name: Stop
-        if: always()
-        run: docker compose down -v
+      - name: Run
+        run: node tests/e2e.mjs

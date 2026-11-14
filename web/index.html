@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>macrocart</title>
+<meta name="description" content="Shopping list with a protein · carbs · fat food board and your recipes. Your data stays on your device.">
+<meta name="theme-color" content="#7A2E6B">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
   :root {
     --bg: #F5F3F6; --surface: #FFFFFF; --surface-solid: #FFFFFF; --surface-2: #F0ECEF; --text: #231A22; --muted: #6A5C68;
@@ -137,6 +142,9 @@
   .rn-prev { display: block; width: 100%; max-height: 180px; object-fit: cover; border-radius: 10px; margin-top: 8px; }
   .rn-prev[hidden] { display: none; }
   .btn.danger { background: var(--danger); color: #fff; }
+  .head-btns { display: flex; gap: 8px; }
+  .set-sec { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 4px; }
+  .set-sec h4 { margin: 10px 0 4px; font-size: 1rem; }
 
   /* Dialogs */
   .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 60; }
@@ -206,7 +214,10 @@
       <h1>Shopping list</h1>
       <span class="sub" id="counter">0 of 0 done</span>
     </div>
-    <button class="btn ghost" id="copyBtn" type="button" title="Copy the list to the clipboard">Copy</button>
+    <div class="head-btns">
+      <button class="btn ghost" id="copyBtn" type="button" title="Copy the list to the clipboard">Copy</button>
+      <button class="btn ghost" id="setOpen" type="button" title="Settings, export and import" aria-label="Settings">⚙</button>
+    </div>
   </header>
 
   <nav class="tabs" id="tabs">
@@ -438,8 +449,46 @@
   </div>
 </div>
 
+<div class="modal-back" id="setBack" hidden>
+  <form class="modal" id="setForm" role="dialog" aria-modal="true" aria-labelledby="setTitle" autocomplete="off">
+    <h3 id="setTitle">Settings</h3>
+    <p class="sub">Your list, foods, recipes and photos live only on this device.</p>
+    <label class="cm-lbl" for="setSups">Shops (comma-separated)</label>
+    <input type="text" id="setSups" class="cm-input" maxlength="600" placeholder="e.g. Corner shop, Market">
+    <label class="cm-lbl" for="setCountry">Search the internet in one country</label>
+    <input type="text" id="setCountry" class="cm-input" list="setCountryList" maxlength="44" placeholder="Worldwide (empty) or e.g. en:spain">
+    <datalist id="setCountryList">
+      <option value="en:spain"><option value="en:france"><option value="en:germany"><option value="en:italy">
+      <option value="en:portugal"><option value="en:united-kingdom"><option value="en:united-states"><option value="en:mexico">
+    </datalist>
+    <label class="cm-lbl" for="setLang">Language of product names (two letters)</label>
+    <input type="text" id="setLang" class="cm-input" maxlength="2" placeholder="en">
+    <button class="btn" type="submit" id="setSave" style="width:100%;margin-top:12px">Save settings</button>
+    <div class="set-sec">
+      <h4>Move or back up your data</h4>
+      <p class="hint">Export saves everything (with photos) to one file. Import it on another device, or here to restore it.</p>
+      <button class="btn ghost" type="button" id="expBtn" style="width:100%">Export data</button>
+      <button class="btn ghost" type="button" id="impBtn" style="width:100%;margin-top:8px">Import data…</button>
+      <input type="file" id="impFile" accept=".json,application/json" hidden>
+    </div>
+    <button class="btn ghost" type="button" id="setClose" style="width:100%;margin-top:14px">Close</button>
+  </form>
+</div>
+
+<div class="modal-back" id="impBack" hidden>
+  <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="impTitle" aria-describedby="impText">
+    <h3 id="impTitle">Import data</h3>
+    <p class="sub" id="impText"></p>
+    <button class="btn" type="button" id="impMerge" style="width:100%;margin-top:8px">Merge with this device</button>
+    <button class="btn danger" type="button" id="impReplace" style="width:100%;margin-top:8px">Replace everything here</button>
+    <button class="btn ghost" type="button" id="impNo" style="width:100%;margin-top:8px">Cancel</button>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script src="js/db.js"></script>
+<script src="js/api.js"></script>
 <script>
 /* Shared helpers. Each tab below keeps its own state. */
 const $ = (s) => document.querySelector(s);
@@ -467,22 +516,11 @@ function toast(msg, action){
   toastTimer = setTimeout(() => el.classList.remove("show"), duration);
 }
 
-async function api(path, opts = {}){
-  const res = await fetch(path, { headers: opts.body ? { "Content-Type": "application/json" } : undefined, ...opts });
-  if(!res.ok){
-    let msg = "Error " + res.status;
-    try { const j = await res.json(); if(j && j.error) msg = j.error; } catch(e){}
-    const err = new Error(msg);
-    err.status = res.status;
-    throw err;
-  }
-  return res.status === 204 ? null : res.json();
-}
 </script>
 
 <script>
 /* ═══════════ List tab: photo cards ═══════════
-   The photo is that of the product with the same name (img_id from /api/items).
+   The photo is that of the product with the same name (img_src from /api/items).
    Reloads on the "macrocart:refresh" event, sent by the Foods tab. */
 (() => {
   let items = [];
@@ -494,8 +532,8 @@ async function api(path, opts = {}){
   }
 
   function card(i){
-    const img = i.img_id != null
-      ? '<img class="lst-img" loading="lazy" src="/api/products/' + i.img_id + '/img" alt="">'
+    const img = i.img_src
+      ? '<img class="lst-img" loading="lazy" src="' + esc(i.img_src) + '" alt="" referrerpolicy="no-referrer">'
       : '<span class="lst-img ph" aria-hidden="true">🛒</span>';
     return '<div class="lst-card' + (i.checked ? " done" : "") + '" data-id="' + esc(i.id) + '">' +
       '<button class="lst-hit" type="button" data-act="check" aria-pressed="' + i.checked +
@@ -712,7 +750,7 @@ async function api(path, opts = {}){
     const m = it.per100, best = cheapest(it), on = recipe ? recSel === it.id : selected.has(it.id);
     const key = it.category === "protein" ? ["P", m.p] : it.category === "fat" ? ["F", m.f] : ["C", m.c];
     const img = it.img
-      ? '<img class="tile-img" loading="lazy" src="/api/products/' + it.id + '/img?v=' + it.img_v + '" alt="">'
+      ? '<img class="tile-img" loading="lazy" src="' + esc(it.img_src) + '" alt="" referrerpolicy="no-referrer">'
       : '<span class="tile-img ph" aria-hidden="true">🥫</span>';
     return '<div class="tile' + (on ? " sel" : "") + '" role="button" tabindex="0" aria-pressed="' + on +
       '" data-id="' + it.id + '" title="' + esc(it.name) + '">' + img +
@@ -828,7 +866,7 @@ async function api(path, opts = {}){
     const it = current, m = it.per100, u = it.unit === "serving" ? "serving" : "100 g";
     const img = $("#cmImg");
     img.hidden = !it.img;
-    if(it.img) img.src = "/api/products/" + it.id + "/img?v=" + it.img_v;
+    if(it.img) img.src = it.img_src;
     $("#cmKind").value = it.kind;
     $("#cmPriceBox").hidden = it.kind === "recipe";
     $("#cmName").textContent = it.name;
@@ -998,8 +1036,8 @@ async function api(path, opts = {}){
     const m = it.per100, open = offOpenCode === it.code;
     const src = it.img_small || it.img;
     return '<div class="off-item' + (open ? " open" : "") + '" data-code="' + esc(it.code) + '">' +
-      '<img loading="lazy" src="' + (src ? esc(src) : "/api/off/img/" + encodeURIComponent(it.code)) +
-      '" alt="" referrerpolicy="no-referrer"' + (src ? "" : ' data-fb="1"') + ">" +
+      (src ? '<img loading="lazy" src="' + esc(src) + '" alt="" referrerpolicy="no-referrer">'
+        : '<img loading="lazy" alt="" referrerpolicy="no-referrer" data-fb="1" data-need="1">') +
       '<div class="tile-body">' +
         '<span class="tile-name">' + esc(it.name) + "</span>" +
         ((it.brand || it.quantity) ? '<span class="tile-brand">' + esc([it.brand, it.quantity].filter(Boolean).join(" · ")) + "</span>" : "") +
@@ -1011,7 +1049,14 @@ async function api(path, opts = {}){
         (k === it.auto_category ? "sug" : "") + '">' + l + "</button>").join("") + "</div>" : "") +
       "</div>";
   }
-  function offRender(){ $("#offList").innerHTML = offItems.map(offCard).join(""); }
+  function offFallback(img){
+    const code = img.closest(".off-item").dataset.code;
+    macrocart.offImg(code).then(u => { if(u && u !== img.src) img.src = u; else placeholder(img, "ph"); });
+  }
+  function offRender(){
+    $("#offList").innerHTML = offItems.map(offCard).join("");
+    $$("#offList img[data-need]").forEach(offFallback);
+  }
   async function offSearch(more){
     if(!more){ offQuery = $("#offQ").value.trim(); offPage = 1; offItems = []; offOpenCode = null; } else offPage++;
     if(offQuery.length < 2){ $("#offHint").textContent = "Type at least 2 letters."; return; }
@@ -1028,8 +1073,8 @@ async function api(path, opts = {}){
   }
   $("#offList").addEventListener("error", (e) => {
     const img = e.target; if(img.tagName !== "IMG") return;
-    if(!img.dataset.fb){ img.dataset.fb = "1"; img.src = "/api/off/img/" + encodeURIComponent(img.closest(".off-item").dataset.code); }
-    else placeholder(img, "ph");
+    if(!img.dataset.fb){ img.dataset.fb = "1"; offFallback(img); }
+    else if(img.isConnected) placeholder(img, "ph");
   }, true);
   $("#offOpen").addEventListener("click", () => { $("#offBack").hidden = false; $("#offQ").focus(); });
   $("#offClose").addEventListener("click", () => { $("#offBack").hidden = true; });
@@ -1056,7 +1101,7 @@ async function api(path, opts = {}){
   });
 
   /* Barcode scanner: the browser's own BarcodeDetector when it reads EAN-13,
-     otherwise the bundled ZXing WebAssembly ponyfill (static/vendor), loaded on first use. */
+     otherwise the bundled ZXing WebAssembly ponyfill (vendor/), loaded on first use. */
   const SCAN_FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "qr_code"];
   let detectorP = null, scanStream = null, scanTimer = null;
   function loadScript(src){
@@ -1073,10 +1118,10 @@ async function api(path, opts = {}){
         if(have.includes("ean_13")) return new window.BarcodeDetector({ formats: SCAN_FORMATS.filter(f => have.includes(f)) });
       } catch(e){}
     }
-    if(!window.BarcodeDetectionAPI) await loadScript("/static/vendor/barcode-detector.js");
+    if(!window.BarcodeDetectionAPI) await loadScript("vendor/barcode-detector.js");
     const lib = window.BarcodeDetectionAPI;
     await lib.prepareZXingModule({
-      overrides: { locateFile: (path, prefix) => path.endsWith(".wasm") ? "/static/vendor/" + path : prefix + path },
+      overrides: { locateFile: (path, prefix) => path.endsWith(".wasm") ? new URL("vendor/" + path, location.href).href : prefix + path },
       fireImmediately: true,
     });
     return new lib.BarcodeDetector({ formats: SCAN_FORMATS });
@@ -1222,7 +1267,7 @@ async function api(path, opts = {}){
       $("#rnUnit").value = it.unit === "serving" ? "serving" : "g";
       $("#rnKcal").value = m.kcal; $("#rnP").value = m.p; $("#rnC").value = m.c; $("#rnF").value = m.f;
       $("#rnCat").value = it.manual_category; $("#rnFav").checked = it.favorite; $("#rnNotes").value = it.notes;
-      if(it.img){ $("#rnPrev").src = "/api/products/" + it.id + "/img?v=" + it.img_v; $("#rnPrev").hidden = false; }
+      if(it.img){ $("#rnPrev").src = it.img_src; $("#rnPrev").hidden = false; }
     }
     $("#rnBack").hidden = false;
     $("#rnName").focus();
@@ -1287,6 +1332,8 @@ async function api(path, opts = {}){
   document.addEventListener("keydown", (e) => {
     if(e.key !== "Escape") return;
     if(!$("#delBack").hidden) delClose();
+    else if(!$("#impBack").hidden) $("#impBack").hidden = true;
+    else if(!$("#setBack").hidden) $("#setBack").hidden = true;
     else if(!$("#rnBack").hidden) closeRecipe();
     else if(!$("#scanBack").hidden) scanClose();
     else if(!$("#manBack").hidden) closeManual();
@@ -1297,6 +1344,89 @@ async function api(path, opts = {}){
   let saved = "list";
   try { saved = localStorage.getItem("macrocart.tab") || "list"; } catch(e){}
   if(saved !== "list") switchTab(saved);
+})();
+</script>
+
+<script>
+/* ═══════════ Settings, export and import ═══════════ */
+(() => {
+  let pending = null;   // parsed export waiting for "merge" or "replace"
+
+  async function openSettings(){
+    const s = await macrocart.getSettings();
+    $("#setSups").value = s.supermarkets.join(", ");
+    $("#setCountry").value = s.offCountry;
+    $("#setLang").value = s.offLang;
+    $("#setBack").hidden = false;
+  }
+  const close = () => { $("#setBack").hidden = true; };
+  $("#setOpen").addEventListener("click", openSettings);
+  $("#setClose").addEventListener("click", close);
+  $("#setBack").addEventListener("click", (e) => { if(e.target.id === "setBack") close(); });
+  $("#setForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const country = $("#setCountry").value.trim().toLowerCase();
+    try {
+      const s = await api("/api/settings", { method: "PUT", body: JSON.stringify({
+        supermarkets: $("#setSups").value, offCountry: country, offLang: $("#setLang").value }) });
+      if(country && !s.offCountry) toast("Country not understood: searching worldwide");
+      else toast("Settings saved");
+      close();
+      window.dispatchEvent(new Event("macrocart:refresh"));
+    } catch(err){ toast(err.message); }
+  });
+
+  $("#expBtn").addEventListener("click", async () => {
+    const btn = $("#expBtn"); btn.disabled = true;
+    try {
+      const data = await macrocart.exportAll();
+      const name = "macrocart-" + new Date().toISOString().slice(0, 10) + ".json";
+      const file = new File([JSON.stringify(data)], name, { type: "application/json" });
+      if(navigator.canShare && navigator.canShare({ files: [file] })){
+        try { await navigator.share({ files: [file], title: name }); toast("Exported"); return; }
+        catch(err){ if(err.name === "AbortError") return; }
+      }
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(file); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+      toast("Exported: " + name);
+    } catch(err){ toast("Could not export: " + err.message); }
+    finally { btn.disabled = false; }
+  });
+
+  $("#impBtn").addEventListener("click", () => { $("#impFile").value = ""; $("#impFile").click(); });
+  $("#impFile").addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    try { pending = JSON.parse(await f.text()); }
+    catch(err){ toast("That file is not a macrocart export"); return; }
+    if(!pending || pending.format !== "macrocart"){ pending = null; toast("That file is not a macrocart export"); return; }
+    const n = (k) => Array.isArray(pending[k]) ? pending[k].length : 0;
+    $("#impText").textContent = "“" + f.name + "”" + (pending.exported_at ? " (" + String(pending.exported_at).slice(0, 10) + ")" : "") +
+      ": " + n("products") + " foods and recipes, " + n("items") + " list lines. " +
+      "Merge keeps what is here and adds or updates from the file. Replace deletes everything on this device first.";
+    $("#impBack").hidden = false;
+  });
+  async function doImport(mode){
+    if(!pending) return;
+    $("#impMerge").disabled = $("#impReplace").disabled = true;
+    try {
+      const r = await macrocart.importAll(pending, mode);
+      try { sessionStorage.setItem("macrocart.toast", mode === "replace"
+        ? "Imported " + r.products + " foods and recipes"
+        : "Merged: " + r.added + " new, " + r.updated + " updated"); } catch(e){}
+      location.reload();
+    } catch(err){ toast(err.message); }
+    finally { $("#impMerge").disabled = $("#impReplace").disabled = false; pending = null; $("#impBack").hidden = true; }
+  }
+  $("#impMerge").addEventListener("click", () => doImport("merge"));
+  $("#impReplace").addEventListener("click", () => doImport("replace"));
+  $("#impNo").addEventListener("click", () => { pending = null; $("#impBack").hidden = true; });
+
+  try { const t = sessionStorage.getItem("macrocart.toast"); if(t){ sessionStorage.removeItem("macrocart.toast"); toast(t); } } catch(e){}
+
+  // Offline use and "Install app".
+  if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 })();
 </script>
 </body>

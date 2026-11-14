@@ -1,17 +1,22 @@
 # macrocart
 
-A self-hosted **shopping list with a visual food board and your recipes**. Your
-foods are laid out as photo cards in three columns, **protein · carbs · fat**: tap
-the ones you need and send them to the list in one go.
+A **shopping list with a visual food board and your recipes**, that runs entirely
+on your phone. Your foods are laid out as photo cards in three columns,
+**protein · carbs · fat**: tap the ones you need and send them to the list in one go.
 
 Foods are products you pick from [Open Food Facts](https://world.openfoodfacts.org)
 (searched or scanned by barcode) or type in yourself; recipes are dishes you add by
 hand, with an optional photo, or copy from a food. Everything (list, foods,
-recipes, ratings, notes, prices, photos) lives in one SQLite file and a photos
-folder.
+recipes, ratings, notes, prices, photos) is stored **on your device**: there is no
+server and no account. Export it to one file to move it to another device or keep
+a backup.
 
-Written in Python with Flask; a single page with no build step and no external
-assets (the barcode reader is bundled in `static/vendor/`).
+**Open it:** <https://gutiwayne.github.io/macrocart/> — then "Install app" / "Add to
+Home screen" in your browser's menu. It works offline once installed (the internet
+search and product photos need a connection).
+
+A single static page with no build step and no external assets (the barcode
+reader is bundled in `web/vendor/`).
 
 ## Features
 
@@ -23,8 +28,7 @@ assets (the barcode reader is bundled in `static/vendor/`).
 - 🌐 **Search the internet** — Open Food Facts results only, optionally limited to
   one country. Tap a result, pick its column, done.
 - 📷 **Scan** — read the barcode (EAN/UPC, or a GS1 QR code) with the camera, or
-  type its number, and look it up on Open Food Facts. Needs HTTPS (or localhost)
-  for the camera.
+  type its number, and look it up on Open Food Facts.
 - ➕ **New food** — for products that are not on Open Food Facts: name, brand,
   optional barcode and macros per 100 g. A scanned barcode that Open Food Facts
   does not know opens this form with the barcode filled in.
@@ -33,69 +37,42 @@ assets (the barcode reader is bundled in `static/vendor/`).
   ratings, notes and prices.
 - 🍲 **Recipes** — a third tab with the same three columns. "＋ New recipe": name,
   source (home-made, a restaurant…), photo, nutrition per serving or per 100 g,
-  column, rating, favourite and notes (ingredients, steps…). Tap a recipe for
-  **View**, **Edit** or **Remove** (with a confirmation). On the food board,
-  **Add as recipe** copies the picked foods to Recipes and leaves them on the board.
+  column, rating, favourite and notes. Tap a recipe for **View**, **Edit** or
+  **Remove**. On the food board, **Add as recipe** copies the picked foods to Recipes.
 - ⭐ **Product card** — macros, type (food or recipe), column, 1-5 rating,
   favourite, notes, and for foods a price per shop with the cheapest one marked.
-- 🔎 Search, filter by shop or favourites, sort by rating, name, protein, kcal or
-  price.
-- 🔒 No account, no telemetry.
+- 🔎 Search, filter by shop or favourites, sort by rating, name, protein, kcal or price.
+- ⚙ **Settings** — your shops, the country and language for the internet search,
+  and **Export / Import**.
+- 🔒 No account, no server, no telemetry.
 
-## Quick start (Docker)
+## Moving your data between devices
 
-```bash
-git clone https://github.com/gutiwayne/macrocart.git
-cd macrocart
-cp env.example .env        # optional: edit it
-docker compose up -d --build
-```
+⚙ → **Export data** saves everything, photos included, to one
+`macrocart-YYYY-MM-DD.json` file (shared through the phone's share menu, or
+downloaded). On the other device, ⚙ → **Import data…**, pick the file and choose:
 
-Open <http://127.0.0.1:5000>.
+- **Merge with this device** — keeps what is there. Foods and recipes are matched
+  by barcode (or their internal code) and the most recently changed copy wins;
+  prices per shop likewise; missing list lines and shops are added. Nothing is
+  deleted.
+- **Replace everything here** — the device ends up exactly like the file.
 
-The board starts empty: fill it with **🌐 Search the internet**, **📷 Scan** or
-**＋ New food**, and the Recipes tab with **＋ New recipe**.
+Export now and then as a backup: clearing the browser's site data, or uninstalling
+the app, deletes everything. The app asks the browser for persistent storage, so
+it is not evicted when space runs low.
 
-### Upgrading from a version that read NutriTrace
+## Privacy and network
 
-NutriTrace support has been removed. Remove the `nutritrace` mounts and the
-`NUTRITRACE_*` variables from your setup. Products you added from Open Food Facts
-or typed by hand, with their ratings, notes and prices, are kept; the database is
-upgraded on start-up. Foods that only came from NutriTrace no longer show; add them
-again from the internet search or by hand.
+Your data never leaves the device unless you export it. The only network traffic
+is to Open Food Facts, from your browser, when you search, look up a barcode or add
+a product (`world.openfoodfacts.org`), and product photos loaded from
+`images.openfoodfacts.org`. The scanner reads the camera in the page; no image is
+sent anywhere. Recipe photos are shrunk in the browser (1200 px, JPEG) and stored
+on the device.
 
-## Configuration
-
-All settings are environment variables (see [`env.example`](env.example)).
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `MACROCART_PORT` | `5000` | Host port, bound to `127.0.0.1` in `compose.yaml` |
-| `OFF_COUNTRY` | *(empty: worldwide)* | Open Food Facts country tag, e.g. `en:spain` |
-| `OFF_LANG` | `en` | Two-letter language for product names |
-| `OFF_USER_AGENT` | `macrocart/1.0 (self-hosted)` | User-Agent sent to Open Food Facts; add a contact |
-| `SUPERMARKETS` | *(empty)* | Comma-separated shops offered in the pickers |
-
-Inside the container: `MACROCART_DATA_DIR` (`/app/data`), which holds
-`macrocart.db` and the `photos/` folder of recipe photos.
-
-## Security
-
-macrocart has **no authentication**. `compose.yaml` publishes it on `127.0.0.1`
-only; to reach it from other devices, put it behind a reverse proxy that adds
-authentication (and TLS). The container runs as an unprivileged user on a
-read-only root filesystem with all capabilities dropped.
-
-The only outbound traffic is to Open Food Facts (`search.openfoodfacts.org`,
-`world.openfoodfacts.org`), and only when you use the internet search or look up
-a barcode. Product photos from Open Food Facts are loaded by the browser from
-`images.openfoodfacts.org`.
-
-The scanner reads the camera in the browser; no image leaves the device. A recipe
-photo is shrunk in the browser (1200 px, JPEG) and stored in the data volume. The page
-sends `Permissions-Policy: camera=(self)` so the camera works; a reverse proxy
-that overwrites that header with `camera=()` blocks the scanner (typing the
-barcode still works).
+The internet search uses Open Food Facts' public search, which allows about
+10 searches per minute; past that it answers "busy" for a moment.
 
 ## How a product lands in a column
 
@@ -103,39 +80,34 @@ Protein if at least 30 % of its calories from macros come from protein (so eggs
 and legumes count as protein); otherwise whichever weighs more of carbs and fat.
 A product with no macros goes to carbs. The card lets you override it.
 
-## API
+## Self-hosting
 
+Serve the `web/` folder from any static host over HTTPS (the camera and offline
+mode need HTTPS, or `localhost`). For example, locally:
+
+```bash
+python3 -m http.server -d web 8000   # http://localhost:8000
 ```
-GET    /api/items                       list (each line carries img_id when a product matches its name)
-POST   /api/items                       {name, supermarket, qty}
-PATCH  /api/items/<id>                  name, supermarket, qty, checked
-DELETE /api/items/<id>
-POST   /api/items/clear-checked
 
-GET    /api/products                    foods and recipes (kind 'product' | 'recipe')
-POST   /api/products/custom             {name, brand, code?, kcal, p, c, f, category?} (per 100 g);
-                                        recipes: + kind:'recipe', unit ('serving' | 'g'), rating, favorite, notes, photo (data: URL)
-PATCH  /api/products/<id>               category ('' = automatic), kind, rating 0-5, favorite, notes, hidden (API only),
-                                        name, brand, kcal, p, c, f, photo; unit for recipes. The barcode cannot change.
-DELETE /api/products/<id>               with its rating, notes, prices and uploaded photo
-POST   /api/products/as-recipe          {ids: [...]} → {added, skipped}: copy foods to Recipes
-POST   /api/products/<id>/prices        {supermarket, price} (add or update)
-DELETE /api/prices/<price_id>
-GET    /api/products/<id>/img
-POST   /api/products/to-list            {ids: [...]} → {added, updated}
+This repository publishes `web/` to GitHub Pages on every push to `main`
+(`.github/workflows/pages.yml`).
 
-GET    /api/off/search?q=&page=         Open Food Facts results only
-POST   /api/off/add                     {code, category}
-GET    /api/off/product/<barcode>       look up a barcode (on the board first, then OFF; 404 if unknown)
-GET    /api/off/img/<barcode>           photo fallback (302)
-```
+### Upgrading from the server version
+
+Up to version 1, macrocart was a Flask server with a SQLite database. That version
+is gone; its data is not imported. Add your foods again on the phone.
 
 ## Development
 
+No build step: edit `web/index.html` and `web/js/`. `web/js/api.js` answers the
+same `/api/...` calls the page used to send to the server, from IndexedDB
+(`web/js/db.js`). Bump `VERSION` in `web/sw.js` with every release.
+
+Browser test (what CI runs):
+
 ```bash
-python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
-MACROCART_DATA_DIR=./data python app.py   # http://127.0.0.1:5000
+npm install --no-save playwright && npx playwright install chromium
+node tests/e2e.mjs
 ```
 
 Design notes: [`docs/NOTES.md`](docs/NOTES.md).
