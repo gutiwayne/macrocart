@@ -132,7 +132,11 @@
     width: min(560px, calc(100% - 24px)); padding: 10px 10px 10px 16px; border-radius: 16px;
     background: var(--surface-solid); border: 1px solid var(--border); box-shadow: var(--shadow-md); }
   .sel-bar[hidden] { display: none; }
-  .sel-bar span { flex: 1; font-weight: 600; }
+  .sel-bar span { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sel-bar .btn[hidden] { display: none; }
+  .rn-prev { display: block; width: 100%; max-height: 180px; object-fit: cover; border-radius: 10px; margin-top: 8px; }
+  .rn-prev[hidden] { display: none; }
+  .btn.danger { background: var(--danger); color: #fff; }
 
   /* Dialogs */
   .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 60; }
@@ -179,6 +183,9 @@
 
   @media (max-width: 560px) {
     .tab-btn span { display: none; }
+    .sel-bar { flex-wrap: wrap; }
+    .sel-bar span { flex-basis: 100%; }
+    .sel-bar .btn { flex: 1; padding: 10px 8px; }
     .lst-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .lst-name { font-size: .9rem; }
     .board { gap: 6px; }
@@ -210,6 +217,10 @@
     <button class="tab-btn" type="button" data-tab="foods">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c-4.4 0-8-3.1-8-7.5C4 9 7 6 10 6c1 0 1.5.4 2 .4S13 6 14 6c3 0 6 3 6 7.5 0 4.4-3.6 7.5-8 7.5z"/><path d="M12 6c0-2 1-3.5 3-4"/></svg>
       <span>Foods</span>
+    </button>
+    <button class="tab-btn" type="button" data-tab="recipes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11h18a9 9 0 0 1-18 0z"/><path d="M12 7V3M8 7.5 7 4.5M16 7.5l1-3"/></svg>
+      <span>Recipes</span>
     </button>
   </nav>
 
@@ -248,13 +259,39 @@
       <button class="btn" type="button" id="scanOpen">📷 Scan</button>
       <button class="btn ghost" type="button" id="manOpen">＋ New food</button>
     </div>
-    <p class="hint">Tap cards to pick them, then add them to the list. <b>ⓘ</b> opens the card: rating, notes and prices.</p>
+    <p class="hint">Tap cards to pick them, then add them to the list or copy them to Recipes. <b>ⓘ</b> opens the card: rating, notes and prices.</p>
     <p class="hint" id="catHint" hidden></p>
     <div class="board" id="catBoard"></div>
     <div class="sel-bar" id="selBar" hidden>
       <span id="selCount"></span>
       <button class="btn ghost" type="button" id="selClear">Clear</button>
+      <button class="btn ghost" type="button" id="selDel">Delete</button>
+      <button class="btn ghost" type="button" id="selEdit" hidden>Edit</button>
+      <button class="btn ghost" type="button" id="selRec">Add as recipe</button>
       <button class="btn" type="button" id="selAdd">Add to list</button>
+    </div>
+  </section>
+
+  <!-- ══════════ Recipes ══════════ -->
+  <section class="tab-panel" id="panel-recipes">
+    <div class="board-tools">
+      <input type="search" id="recSearch" placeholder="Search recipes…" maxlength="120">
+      <select id="recSort" aria-label="Sort">
+        <option value="rating">Top rated</option>
+        <option value="name">Name</option>
+        <option value="protein">Most protein</option>
+        <option value="kcal">Fewest kcal</option>
+      </select>
+      <button class="btn" type="button" id="rnOpen">＋ New recipe</button>
+    </div>
+    <p class="hint">Home-made or restaurant dishes. Tap one to view, edit or remove it.</p>
+    <p class="hint" id="recHint" hidden></p>
+    <div class="board" id="recBoard"></div>
+    <div class="sel-bar" id="recBar" hidden>
+      <span id="recSelName"></span>
+      <button class="btn ghost" type="button" id="recSelDel">Remove</button>
+      <button class="btn ghost" type="button" id="recSelEdit">Edit</button>
+      <button class="btn" type="button" id="recSelView">View</button>
     </div>
   </section>
 </div>
@@ -317,6 +354,54 @@
   </form>
 </div>
 
+<div class="modal-back" id="rnBack" hidden>
+  <form class="modal" id="rnForm" role="dialog" aria-modal="true" aria-labelledby="rnTitle" autocomplete="off">
+    <h3 id="rnTitle">New recipe</h3>
+    <p class="sub">A home-made or restaurant dish.</p>
+    <label class="cm-lbl" for="rnName">Name</label>
+    <input type="text" id="rnName" class="cm-input" maxlength="120" required>
+    <label class="cm-lbl" for="rnBrand">Source (home-made, restaurant…)</label>
+    <input type="text" id="rnBrand" class="cm-input" maxlength="80">
+    <label class="cm-lbl" for="rnPhoto">Photo (optional)</label>
+    <input type="file" id="rnPhoto" class="cm-input" accept="image/*">
+    <img id="rnPrev" class="rn-prev" alt="" hidden>
+    <label class="cm-lbl" for="rnUnit">Nutrition</label>
+    <select id="rnUnit" class="cm-input">
+      <option value="serving">Per serving (whole dish)</option>
+      <option value="g">Per 100 g</option>
+    </select>
+    <div class="man-macros">
+      <label>kcal<input type="text" id="rnKcal" class="cm-input" inputmode="decimal" maxlength="7"></label>
+      <label>Protein<input type="text" id="rnP" class="cm-input" inputmode="decimal" maxlength="6"></label>
+      <label>Carbs<input type="text" id="rnC" class="cm-input" inputmode="decimal" maxlength="6"></label>
+      <label>Fat<input type="text" id="rnF" class="cm-input" inputmode="decimal" maxlength="6"></label>
+    </div>
+    <label class="cm-lbl" for="rnCat">Column</label>
+    <select id="rnCat" class="cm-input">
+      <option value="">Automatic (from the macros)</option>
+      <option value="protein">Protein</option>
+      <option value="carbs">Carbs</option>
+      <option value="fat">Fat</option>
+    </select>
+    <span class="cm-lbl">Rating</span>
+    <div class="cm-stars" id="rnStars"></div>
+    <label class="toggle"><input type="checkbox" id="rnFav"> Favourite</label>
+    <label class="cm-lbl" for="rnNotes">Notes</label>
+    <textarea id="rnNotes" class="cm-input" rows="4" maxlength="500" placeholder="Ingredients, steps, where to eat it…"></textarea>
+    <button class="btn" type="submit" id="rnSave" style="width:100%;margin-top:12px">Save recipe</button>
+    <button class="btn ghost" type="button" id="rnClose" style="width:100%;margin-top:8px">Close</button>
+  </form>
+</div>
+
+<div class="modal-back" id="delBack" hidden>
+  <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="delTitle" aria-describedby="delText">
+    <h3 id="delTitle"></h3>
+    <p class="sub" id="delText"></p>
+    <button class="btn danger" type="button" id="delYes" style="width:100%;margin-top:8px">Delete</button>
+    <button class="btn ghost" type="button" id="delNo" style="width:100%;margin-top:8px">Cancel</button>
+  </div>
+</div>
+
 <div class="modal-back" id="catBack" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="cmName">
     <div class="cm-head">
@@ -327,6 +412,11 @@
       </div>
     </div>
     <div class="cm-macros" id="cmMacros"></div>
+    <label class="cm-lbl" for="cmKind">Type</label>
+    <select id="cmKind" class="cm-input">
+      <option value="product">Food (you buy it)</option>
+      <option value="recipe">Recipe / dish</option>
+    </select>
     <label class="cm-lbl" for="cmCat">Column</label>
     <select id="cmCat" class="cm-input"></select>
     <span class="cm-lbl">Rating</span>
@@ -334,6 +424,7 @@
     <label class="toggle"><input type="checkbox" id="cmFav"> Favourite</label>
     <label class="cm-lbl" for="cmNotes">Notes</label>
     <textarea id="cmNotes" class="cm-input" rows="3" maxlength="500" placeholder="Taste, how you have it, alternatives…"></textarea>
+    <div id="cmPriceBox">
     <span class="cm-lbl">Prices per shop</span>
     <div id="cmPrices"></div>
     <div class="field-row">
@@ -341,6 +432,7 @@
       <datalist id="cmSupList"></datalist>
       <input type="number" id="cmPrice" inputmode="decimal" step="0.01" min="0" max="9999.99" placeholder="Price">
       <button class="btn" type="button" id="cmAddPrice">Save</button>
+    </div>
     </div>
     <button class="btn ghost" type="button" id="cmClose" style="width:100%;margin-top:8px">Close</button>
   </div>
@@ -554,24 +646,24 @@ async function api(path, opts = {}){
 </script>
 
 <script>
-/* ═══════════ Foods tab: three-column board ═══════════
+/* ═══════════ Foods and Recipes tabs: three-column boards ═══════════
    Also owns tab switching. After adding to the list it fires "macrocart:refresh". */
 (() => {
   const CATS = [["protein", "Protein"], ["carbs", "Carbs"], ["fat", "Fat"]];
   const CAT_LABEL = Object.fromEntries(CATS);
 
   let items = [], supers = [], current = null;
-  const selected = new Set();
+  const selected = new Set();   // Foods: several cards
+  let recSel = null;            // Recipes: one card → View / Edit / Remove
 
   /* Tabs */
-  const TABS = ["list", "foods"];
+  const TABS = ["list", "foods", "recipes"];
   function switchTab(name){
     if(!TABS.includes(name)) name = "list";
     $$(".tab-btn").forEach(b => b.classList.toggle("is-active", b.dataset.tab === name));
     $$(".tab-panel").forEach(p => p.classList.toggle("is-active", p.id === "panel-" + name));
     try { localStorage.setItem("macrocart.tab", name); } catch(e){}
-    if(name === "foods") load();
-    $("#selBar").hidden = name !== "foods" || !selected.size;
+    if(name === "foods" || name === "recipes") load();
   }
   $("#tabs").addEventListener("click", (e) => {
     const b = e.target.closest(".tab-btn"); if(b) switchTab(b.dataset.tab);
@@ -595,13 +687,13 @@ async function api(path, opts = {}){
     const sup = $("#catSuper").value.toLowerCase();
     const fav = $("#catFavOnly").checked;
     return items.filter(it =>
-      !it.hidden &&
+      !it.hidden && it.kind === "product" &&
       (!q || (it.name + " " + it.brand).toLowerCase().includes(q)) &&
       (!fav || it.favorite) &&
       (!sup || it.brand.toLowerCase() === sup || it.prices.some(p => p.supermarket.toLowerCase() === sup)));
   }
 
-  function sorted(list){
+  function sorted(list, sortSel){
     const name = (a, b) => a.name.localeCompare(b.name);
     const cmp = {
       name,
@@ -612,15 +704,15 @@ async function api(path, opts = {}){
         const pa = cheapest(a), pb = cheapest(b);
         return (pa ? pa.price : Infinity) - (pb ? pb.price : Infinity) || name(a, b);
       },
-    }[$("#catSort").value] || name;
+    }[$(sortSel || "#catSort").value] || name;
     return list.slice().sort(cmp);
   }
 
-  function tile(it){
-    const m = it.per100, best = cheapest(it), on = selected.has(it.id);
+  function tile(it, recipe){
+    const m = it.per100, best = cheapest(it), on = recipe ? recSel === it.id : selected.has(it.id);
     const key = it.category === "protein" ? ["P", m.p] : it.category === "fat" ? ["F", m.f] : ["C", m.c];
     const img = it.img
-      ? '<img class="tile-img" loading="lazy" src="/api/products/' + it.id + '/img" alt="">'
+      ? '<img class="tile-img" loading="lazy" src="/api/products/' + it.id + '/img?v=' + it.img_v + '" alt="">'
       : '<span class="tile-img ph" aria-hidden="true">🥫</span>';
     return '<div class="tile' + (on ? " sel" : "") + '" role="button" tabindex="0" aria-pressed="' + on +
       '" data-id="' + it.id + '" title="' + esc(it.name) + '">' + img +
@@ -632,31 +724,64 @@ async function api(path, opts = {}){
         '<span class="tile-name">' + esc(it.name) + "</span>" +
         (it.brand ? '<span class="tile-brand">' + esc(it.brand) + "</span>" : "") +
         macroBar(m) +
-        '<span class="tile-macro"><b>' + key[0] + " " + num(key[1]) + " g</b> · " + num(m.kcal) + " kcal</span>" +
+        '<span class="tile-macro"><b>' + key[0] + " " + num(key[1]) + " g</b> · " + num(m.kcal) + " kcal" +
+          (it.unit === "serving" ? " / serving" : "") + "</span>" +
         ((it.rating || best) ? '<span class="tile-foot">' + starsHtml(it.rating) +
           (best ? '<span class="price-badge">' + money(best.price) + " " + esc(best.supermarket) + "</span>" : "") + "</span>" : "") +
       "</div></div>";
   }
 
-  function render(){
-    const list = visible();
-    $("#catBoard").innerHTML = CATS.map(([k, l]) => {
-      const g = sorted(list.filter(i => i.category === k));
+  function boardHtml(list, recipe, sortSel){
+    return CATS.map(([k, l]) => {
+      const g = sorted(list.filter(i => i.category === k), sortSel);
       return '<section class="col" style="--c:var(--cat-' + k + ')"><div class="col-head">' + l +
         " <small>" + g.length + '</small></div><div class="col-list">' +
-        (g.length ? g.map(tile).join("") : '<div class="col-empty">Nothing here</div>') + "</div></section>";
+        (g.length ? g.map(i => tile(i, recipe)).join("") : '<div class="col-empty">Nothing here</div>') + "</div></section>";
     }).join("");
+  }
+
+  function render(){
+    const list = visible();
+    $("#catBoard").innerHTML = boardHtml(list, false, "#catSort");
     const hint = $("#catHint");
     hint.hidden = list.length > 0;
-    if(!list.length) hint.textContent = items.length ? "No product matches the filter." :
-      "No products yet. Mount a NutriTrace database, use “Search the internet”, “Scan” or “New food”.";
+    if(!list.length) hint.textContent = items.some(i => i.kind === "product") ? "No product matches the filter." :
+      "No products yet. Use “Search the internet”, “Scan” or “New food”.";
     renderSel();
+    renderRecipes();
+  }
+
+  function renderRecipes(){
+    const q = $("#recSearch").value.trim().toLowerCase();
+    const recs = items.filter(i => i.kind === "recipe" && !i.hidden &&
+      (!q || (i.name + " " + i.brand).toLowerCase().includes(q)));
+    if(recSel !== null && !recs.some(i => i.id === recSel)) recSel = null;
+    $("#recBoard").innerHTML = recs.length ? boardHtml(recs, true, "#recSort") : "";
+    const hint = $("#recHint");
+    hint.hidden = recs.length > 0;
+    if(!recs.length) hint.textContent = q ? "No recipe matches." :
+      "No recipes yet. Use “New recipe”, or pick foods and “Add as recipe”.";
+    renderRecBar();
   }
 
   function renderSel(){
     const n = selected.size;
     $("#selBar").hidden = !n;
     $("#selCount").textContent = n + " selected";
+    $("#selEdit").hidden = n !== 1;
+  }
+  function renderRecBar(){
+    const it = recSel === null ? null : items.find(i => i.id === recSel);
+    $("#recBar").hidden = !it;
+    if(it) $("#recSelName").textContent = it.name;
+  }
+  function recToggle(id){
+    recSel = recSel === id ? null : id;
+    $$("#recBoard .tile").forEach(el => {
+      const on = Number(el.dataset.id) === recSel;
+      el.classList.toggle("sel", on); el.setAttribute("aria-pressed", on);
+    });
+    renderRecBar();
   }
 
   async function load(){
@@ -700,10 +825,12 @@ async function api(path, opts = {}){
 
   /* Product card (dialog) */
   function renderModal(){
-    const it = current, m = it.per100, u = it.unit === "ml" ? "100 ml" : "100 g";
+    const it = current, m = it.per100, u = it.unit === "serving" ? "serving" : "100 g";
     const img = $("#cmImg");
     img.hidden = !it.img;
-    if(it.img) img.src = "/api/products/" + it.id + "/img";
+    if(it.img) img.src = "/api/products/" + it.id + "/img?v=" + it.img_v;
+    $("#cmKind").value = it.kind;
+    $("#cmPriceBox").hidden = it.kind === "recipe";
     $("#cmName").textContent = it.name;
     $("#cmBrand").textContent = (it.brand ? it.brand + " · " : "") + "per " + u;
     $("#cmMacros").innerHTML =
@@ -758,9 +885,80 @@ async function api(path, opts = {}){
   });
   $("#selAdd").addEventListener("click", addSelected);
   $("#selClear").addEventListener("click", () => { selected.clear(); render(); });
+  $("#selEdit").addEventListener("click", () => {
+    const it = items.find(i => i.id === [...selected][0]); if(it) openManual({}, it);
+  });
+  // Copies the picked foods to Recipes; the foods stay on the board.
+  $("#selRec").addEventListener("click", async () => {
+    if(!selected.size) return;
+    const btn = $("#selRec"); btn.disabled = true;
+    try {
+      const r = await api("/api/products/as-recipe", { method: "POST", body: JSON.stringify({ ids: [...selected] }) });
+      const parts = [];
+      if(r.added) parts.push(r.added + " copied to Recipes");
+      if(r.skipped) parts.push(r.skipped + " already in Recipes");
+      toast(parts.join(", ") || "Nothing to copy");
+      selected.clear();
+      await load();
+    } catch(e){ toast(e.message); }
+    finally { btn.disabled = false; }
+  });
+  $("#selDel").addEventListener("click", () => {
+    const pick = items.filter(i => selected.has(i.id)); if(!pick.length) return;
+    confirmDelete(pick.length === 1 ? "Delete this food?" : "Delete " + pick.length + " foods?",
+      (pick.length === 1 ? "“" + pick[0].name + "”" : pick.map(i => "“" + i.name + "”").join(", ")) +
+      " will be deleted with its rating, notes and prices. This cannot be undone.", pick, () => selected.clear());
+  });
+
+  /* Recipes board */
+  $("#recSearch").addEventListener("input", renderRecipes);
+  $("#recSort").addEventListener("change", renderRecipes);
+  $("#recBoard").addEventListener("click", (e) => {
+    const info = e.target.closest("[data-info]");
+    if(info){ openModal(Number(info.dataset.info)); return; }
+    const t = e.target.closest(".tile"); if(t) recToggle(Number(t.dataset.id));
+  });
+  $("#recBoard").addEventListener("keydown", (e) => {
+    if(e.key !== "Enter" && e.key !== " ") return;
+    const t = e.target.closest(".tile");
+    if(t && e.target === t){ e.preventDefault(); recToggle(Number(t.dataset.id)); }
+  });
+  $("#recSelView").addEventListener("click", () => { if(recSel !== null) openModal(recSel); });
+  $("#recSelEdit").addEventListener("click", () => { const it = items.find(i => i.id === recSel); if(it) openRecipe(it); });
+  $("#recSelDel").addEventListener("click", () => {
+    const it = items.find(i => i.id === recSel); if(!it) return;
+    confirmDelete("Remove this recipe?", "“" + it.name + "” will be deleted. This cannot be undone.", [it],
+      () => { recSel = null; });
+  });
+
+  /* Delete confirmation */
+  let delPending = null;
+  function confirmDelete(title, text, list, after){
+    delPending = { list, after };
+    $("#delTitle").textContent = title;
+    $("#delText").textContent = text;
+    $("#delBack").hidden = false;
+    $("#delNo").focus();
+  }
+  function delClose(){ $("#delBack").hidden = true; delPending = null; }
+  $("#delNo").addEventListener("click", delClose);
+  $("#delBack").addEventListener("click", (e) => { if(e.target.id === "delBack") delClose(); });
+  $("#delYes").addEventListener("click", async () => {
+    if(!delPending) return;
+    const { list, after } = delPending, btn = $("#delYes");
+    btn.disabled = true;
+    try {
+      for(const it of list) await api("/api/products/" + it.id, { method: "DELETE" });
+      toast(list.length === 1 ? "“" + list[0].name + "” deleted" : list.length + " deleted");
+      if(after) after();
+      delClose();
+    } catch(e){ toast(e.message); }
+    finally { btn.disabled = false; await load(); }
+  });
   $("#cmClose").addEventListener("click", closeModal);
   $("#catBack").addEventListener("click", (e) => { if(e.target.id === "catBack") closeModal(); });
   $("#cmCat").addEventListener("change", (e) => patch({ category: e.target.value }));
+  $("#cmKind").addEventListener("change", (e) => { if(current) selected.delete(current.id); patch({ kind: e.target.value }); });
   $("#cmFav").addEventListener("change", (e) => patch({ favorite: e.target.checked }));
   $("#cmStars").addEventListener("click", (e) => {
     const b = e.target.closest("[data-star]"); if(!b || !current) return;
@@ -962,10 +1160,20 @@ async function api(path, opts = {}){
   });
 
   /* Food typed by hand (not on Open Food Facts) */
-  function openManual(pre = {}){
+  let manEdit = null;   // food being edited, or null = new
+  function openManual(pre = {}, it = null){
     $("#manForm").reset();
-    $("#manName").value = pre.name || "";
+    manEdit = it;
+    $("#manTitle").textContent = it ? "Edit food" : "New food";
+    $("#manCode").disabled = !!it;   // the barcode cannot be changed
+    $("#manName").value = it ? it.name : pre.name || "";
     $("#manCode").value = pre.code || "";
+    if(it){
+      $("#manBrand").value = it.brand;
+      $("#manKcal").value = it.per100.kcal; $("#manP").value = it.per100.p;
+      $("#manC").value = it.per100.c; $("#manF").value = it.per100.f;
+      $("#manCat").value = it.manual_category;
+    }
     $("#manBack").hidden = false;
     $("#manName").focus();
   }
@@ -980,6 +1188,13 @@ async function api(path, opts = {}){
       kcal: val("#manKcal"), p: val("#manP"), c: val("#manC"), f: val("#manF"), category: $("#manCat").value };
     $("#manSave").disabled = true;
     try {
+      if(manEdit){
+        delete body.code;
+        await api("/api/products/" + manEdit.id, { method: "PATCH", body: JSON.stringify(body) });
+        closeManual(); toast("“" + body.name + "” saved");
+        selected.clear(); load();
+        return;
+      }
       const r = await api("/api/products/custom", { method: "POST", body: JSON.stringify(body) });
       closeManual();
       toast("“" + r.name + "” added to " + CAT_LABEL[r.category]);
@@ -988,9 +1203,92 @@ async function api(path, opts = {}){
     finally { $("#manSave").disabled = false; }
   });
 
+  /* Recipe typed by hand (new or edit) */
+  let rnEdit = null, rnRating = 0, rnPhoto = "";
+  function rnStars(){
+    $("#rnStars").innerHTML = [1,2,3,4,5].map(n =>
+      '<button type="button" data-star="' + n + '" class="' + (n <= rnRating ? "on" : "") +
+      '" aria-label="' + n + ' stars">★</button>').join("");
+  }
+  function openRecipe(it = null){
+    $("#rnForm").reset();
+    rnEdit = it; rnRating = it ? it.rating : 0; rnPhoto = ""; rnStars();
+    $("#rnTitle").textContent = it ? "Edit recipe" : "New recipe";
+    $("#rnSave").textContent = it ? "Save changes" : "Save recipe";
+    $("#rnPrev").hidden = true; $("#rnPrev").removeAttribute("src");
+    if(it){
+      const m = it.per100;
+      $("#rnName").value = it.name; $("#rnBrand").value = it.brand;
+      $("#rnUnit").value = it.unit === "serving" ? "serving" : "g";
+      $("#rnKcal").value = m.kcal; $("#rnP").value = m.p; $("#rnC").value = m.c; $("#rnF").value = m.f;
+      $("#rnCat").value = it.manual_category; $("#rnFav").checked = it.favorite; $("#rnNotes").value = it.notes;
+      if(it.img){ $("#rnPrev").src = "/api/products/" + it.id + "/img?v=" + it.img_v; $("#rnPrev").hidden = false; }
+    }
+    $("#rnBack").hidden = false;
+    $("#rnName").focus();
+  }
+  function closeRecipe(){ $("#rnBack").hidden = true; }
+  // Phone photos weigh several MB: shrink to 1200 px on the long side, JPEG, before sending.
+  function shrink(file){
+    return new Promise((ok, ko) => {
+      const url = URL.createObjectURL(file), im = new Image();
+      im.onload = () => {
+        const k = Math.min(1, 1200 / Math.max(im.naturalWidth, im.naturalHeight));
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(im.naturalWidth * k); cv.height = Math.round(im.naturalHeight * k);
+        cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(url);
+        ok(cv.toDataURL("image/jpeg", 0.85));
+      };
+      im.onerror = () => { URL.revokeObjectURL(url); ko(new Error("Could not read the photo")); };
+      im.src = url;
+    });
+  }
+  $("#rnPhoto").addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0];
+    rnPhoto = "";
+    if(!f) return;
+    try { rnPhoto = await shrink(f); $("#rnPrev").src = rnPhoto; $("#rnPrev").hidden = false; }
+    catch(err){ e.target.value = ""; toast(err.message); }
+  });
+  $("#rnStars").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-star]"); if(!b) return;
+    const n = Number(b.dataset.star);
+    rnRating = rnRating === n ? 0 : n; rnStars();
+  });
+  $("#rnOpen").addEventListener("click", () => openRecipe());
+  $("#rnClose").addEventListener("click", closeRecipe);
+  $("#rnBack").addEventListener("click", (e) => { if(e.target.id === "rnBack") closeRecipe(); });
+  $("#rnForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const val = (s) => $(s).value.trim();
+    const body = { name: val("#rnName"), brand: val("#rnBrand"), unit: $("#rnUnit").value,
+      kcal: val("#rnKcal"), p: val("#rnP"), c: val("#rnC"), f: val("#rnF"), category: $("#rnCat").value,
+      rating: rnRating, favorite: $("#rnFav").checked, notes: $("#rnNotes").value.trim() };
+    if(rnPhoto) body.photo = rnPhoto;
+    $("#rnSave").disabled = true;
+    try {
+      if(rnEdit){
+        await api("/api/products/" + rnEdit.id, { method: "PATCH", body: JSON.stringify(body) });
+        toast("“" + body.name + "” saved");
+      } else {
+        const r = await api("/api/products/custom", { method: "POST", body: JSON.stringify({ ...body, kind: "recipe" }) });
+        toast("Recipe “" + r.name + "” added to " + CAT_LABEL[r.category]);
+      }
+      closeRecipe();
+      load();
+    } catch(err){ toast(err.message); }
+    finally { $("#rnSave").disabled = false; }
+  });
+  $("#recBoard").addEventListener("error", (e) => {
+    if(e.target.tagName === "IMG") placeholder(e.target, "tile-img ph");
+  }, true);
+
   document.addEventListener("keydown", (e) => {
     if(e.key !== "Escape") return;
-    if(!$("#scanBack").hidden) scanClose();
+    if(!$("#delBack").hidden) delClose();
+    else if(!$("#rnBack").hidden) closeRecipe();
+    else if(!$("#scanBack").hidden) scanClose();
     else if(!$("#manBack").hidden) closeManual();
     else if(!$("#offBack").hidden) $("#offBack").hidden = true;
     else if(!$("#catBack").hidden) closeModal();

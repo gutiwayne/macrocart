@@ -1,14 +1,14 @@
 # macrocart
 
-A self-hosted **shopping list with a visual food board**. Your foods are laid out
-as photo cards in three columns, **protein · carbs · fat**: tap the ones you need
-and send them to the list in one go.
+A self-hosted **shopping list with a visual food board and your recipes**. Your
+foods are laid out as photo cards in three columns, **protein · carbs · fat**: tap
+the ones you need and send them to the list in one go.
 
-Foods come from a [NutriTrace](https://github.com/traceapps/nutritrace) database
-mounted **read-only**, plus any product you pick from
-[Open Food Facts](https://world.openfoodfacts.org) (searched or scanned by barcode),
-plus foods you type in yourself. Your own data (list, ratings, notes, prices,
-your foods) lives in a separate SQLite file.
+Foods are products you pick from [Open Food Facts](https://world.openfoodfacts.org)
+(searched or scanned by barcode) or type in yourself; recipes are dishes you add by
+hand, with an optional photo, or copy from a food. Everything (list, foods,
+recipes, ratings, notes, prices, photos) lives in one SQLite file and a photos
+folder.
 
 Written in Python with Flask; a single page with no build step and no external
 assets (the barcode reader is bundled in `static/vendor/`).
@@ -28,11 +28,19 @@ assets (the barcode reader is bundled in `static/vendor/`).
 - ➕ **New food** — for products that are not on Open Food Facts: name, brand,
   optional barcode and macros per 100 g. A scanned barcode that Open Food Facts
   does not know opens this form with the barcode filled in.
-- ⭐ **Product card** — macros per 100 g, column, 1-5 rating, favourite, notes,
-  and a price per shop with the cheapest one marked.
+- ✏️ **Edit and delete** — pick one food and "Edit" its name, brand, macros and
+  column; "Delete" (with a confirmation) removes the picked foods with their
+  ratings, notes and prices.
+- 🍲 **Recipes** — a third tab with the same three columns. "＋ New recipe": name,
+  source (home-made, a restaurant…), photo, nutrition per serving or per 100 g,
+  column, rating, favourite and notes (ingredients, steps…). Tap a recipe for
+  **View**, **Edit** or **Remove** (with a confirmation). On the food board,
+  **Add as recipe** copies the picked foods to Recipes and leaves them on the board.
+- ⭐ **Product card** — macros, type (food or recipe), column, 1-5 rating,
+  favourite, notes, and for foods a price per shop with the cheapest one marked.
 - 🔎 Search, filter by shop or favourites, sort by rating, name, protein, kcal or
   price.
-- 🔒 NutriTrace is never written to; no account, no telemetry.
+- 🔒 No account, no telemetry.
 
 ## Quick start (Docker)
 
@@ -45,18 +53,16 @@ docker compose up -d --build
 
 Open <http://127.0.0.1:5000>.
 
-Without a NutriTrace database the board starts empty: fill it with
-**🌐 Search the internet**, **📷 Scan** or **＋ New food**.
+The board starts empty: fill it with **🌐 Search the internet**, **📷 Scan** or
+**＋ New food**, and the Recipes tab with **＋ New recipe**.
 
-### With NutriTrace
+### Upgrading from a version that read NutriTrace
 
-Leave `NUTRITRACE_ENABLED=true` and point `NUTRITRACE_DIR` (in `.env`) at the folder that holds NutriTrace's
-`db/nutritrace.db` and `uploads/`. Both are mounted read-only; macrocart opens the
-database with `mode=ro` and reads the `foods` table (name, brand, nutrition,
-portion, unit, photo). Deleted foods are skipped and foods shared between users
-are shown once. If the database is missing, corrupt or has another schema, the
-board carries on with internet products and a warning goes to the log; set
-`NUTRITRACE_ENABLED=false` to skip NutriTrace altogether.
+NutriTrace support has been removed. Remove the `nutritrace` mounts and the
+`NUTRITRACE_*` variables from your setup. Products you added from Open Food Facts
+or typed by hand, with their ratings, notes and prices, are kept; the database is
+upgraded on start-up. Foods that only came from NutriTrace no longer show; add them
+again from the internet search or by hand.
 
 ## Configuration
 
@@ -65,15 +71,13 @@ All settings are environment variables (see [`env.example`](env.example)).
 | Variable | Default | Meaning |
 |---|---|---|
 | `MACROCART_PORT` | `5000` | Host port, bound to `127.0.0.1` in `compose.yaml` |
-| `NUTRITRACE_ENABLED` | `true` | `false` = never look for NutriTrace (internet products only) |
-| `NUTRITRACE_DIR` | `./nutritrace` | NutriTrace data folder (`db/`, `uploads/`), read-only |
 | `OFF_COUNTRY` | *(empty: worldwide)* | Open Food Facts country tag, e.g. `en:spain` |
 | `OFF_LANG` | `en` | Two-letter language for product names |
 | `OFF_USER_AGENT` | `macrocart/1.0 (self-hosted)` | User-Agent sent to Open Food Facts; add a contact |
 | `SUPERMARKETS` | *(empty)* | Comma-separated shops offered in the pickers |
 
-Inside the container: `MACROCART_DATA_DIR` (`/app/data`), `NUTRITRACE_DB`
-(`/nutritrace/db/nutritrace.db`) and `NUTRITRACE_UPLOADS` (`/nutritrace/uploads`).
+Inside the container: `MACROCART_DATA_DIR` (`/app/data`), which holds
+`macrocart.db` and the `photos/` folder of recipe photos.
 
 ## Security
 
@@ -87,7 +91,8 @@ The only outbound traffic is to Open Food Facts (`search.openfoodfacts.org`,
 a barcode. Product photos from Open Food Facts are loaded by the browser from
 `images.openfoodfacts.org`.
 
-The scanner reads the camera in the browser; no image leaves the device. The page
+The scanner reads the camera in the browser; no image leaves the device. A recipe
+photo is shrunk in the browser (1200 px, JPEG) and stored in the data volume. The page
 sends `Permissions-Policy: camera=(self)` so the camera works; a reverse proxy
 that overwrites that header with `camera=()` blocks the scanner (typing the
 barcode still works).
@@ -107,9 +112,13 @@ PATCH  /api/items/<id>                  name, supermarket, qty, checked
 DELETE /api/items/<id>
 POST   /api/items/clear-checked
 
-GET    /api/products                    board: NutriTrace + Open Food Facts + your own products
-POST   /api/products/custom             {name, brand, code?, kcal, p, c, f, category?} (per 100 g)
-PATCH  /api/products/<id>               category ('' = automatic), rating 0-5, favorite, notes, hidden (API only)
+GET    /api/products                    foods and recipes (kind 'product' | 'recipe')
+POST   /api/products/custom             {name, brand, code?, kcal, p, c, f, category?} (per 100 g);
+                                        recipes: + kind:'recipe', unit ('serving' | 'g'), rating, favorite, notes, photo (data: URL)
+PATCH  /api/products/<id>               category ('' = automatic), kind, rating 0-5, favorite, notes, hidden (API only),
+                                        name, brand, kcal, p, c, f, photo; unit for recipes. The barcode cannot change.
+DELETE /api/products/<id>               with its rating, notes, prices and uploaded photo
+POST   /api/products/as-recipe          {ids: [...]} → {added, skipped}: copy foods to Recipes
 POST   /api/products/<id>/prices        {supermarket, price} (add or update)
 DELETE /api/prices/<price_id>
 GET    /api/products/<id>/img
@@ -137,4 +146,4 @@ Copyright © 2026 gutiwayne. Licensed under the
 [GNU Affero General Public License v3.0](LICENSE). Third-party notices:
 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
-macrocart is not affiliated with NutriTrace or Open Food Facts.
+macrocart is not affiliated with Open Food Facts.

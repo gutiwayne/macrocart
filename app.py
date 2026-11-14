@@ -1,10 +1,11 @@
-"""macrocart: a self-hosted shopping list with a visual food board.
+"""macrocart: a self-hosted shopping list with a visual food board and recipes.
 
-Foods come from a NutriTrace database mounted read-only, plus products you pick
-from Open Food Facts. Your own data (list, ratings, notes, prices, internet
-products) lives in a separate SQLite file. The NutriTrace database is never
-written to.
+Foods are products you pick from Open Food Facts (searched or scanned) or type in
+yourself; recipes are dishes you add by hand or copy from a food. Everything
+(list, foods, recipes, ratings, notes, prices, photos) lives in one SQLite file
+plus a photos folder.
 """
+import base64
 import json
 import os
 import re
@@ -24,11 +25,9 @@ app = Flask(__name__)
 
 DATA_DIR = os.environ.get("MACROCART_DATA_DIR", "/app/data")
 DB_FILE = os.path.join(DATA_DIR, "macrocart.db")
-# NutriTrace is optional. NUTRITRACE_ENABLED=false skips it entirely; when enabled,
-# a missing, corrupt or incompatible database only logs a warning.
-NT_ENABLED = os.environ.get("NUTRITRACE_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
-NT_DB = os.environ.get("NUTRITRACE_DB", "/nutritrace/db/nutritrace.db")
-NT_UPLOADS = os.environ.get("NUTRITRACE_UPLOADS", "/nutritrace/uploads")
+# Photos uploaded with recipes. img_url = PHOTO_PREFIX + <hex>.<ext>.
+PHOTO_DIR = os.path.join(DATA_DIR, "photos")
+PHOTO_PREFIX = "photos/"
 OFF_COUNTRY = os.environ.get("OFF_COUNTRY", "").strip()      # e.g. "en:spain"; empty = worldwide
 OFF_LANG = os.environ.get("OFF_LANG", "en").strip().lower()
 if not re.fullmatch(r"[a-z]{2}", OFF_LANG):
@@ -44,8 +43,15 @@ QTY_MAX = 999
 PRICE_MAX = 9999.99
 TO_LIST_MAX = 200
 
+PHOTO_MAX = 3 * 1024 * 1024   # bytes, after decoding; the page already shrinks photos to 1200 px JPEG
+
 CATEGORIES = ("protein", "carbs", "fat")
-EXTRA_BASE = 1_000_000_000   # ids of Open Food Facts products, so they never clash with NutriTrace ids
+KINDS = ("product", "recipe")
+UNITS = ("g", "serving")     # nutrition per 100 g, or per serving (recipes only)
+# Product ids are EXTRA_BASE + catalog_extra.id. The offset is kept from the time
+# products could also come from another database, so existing ratings and prices
+# stay attached to their products.
+EXTRA_BASE = 1_000_000_000
 OFF_SEARCH = "https://search.openfoodfacts.org/search"
 OFF_PRODUCT = "https://world.openfoodfacts.org/api/v2/product/{}.json"
 OFF_FIELDS = ",".join((
@@ -58,9 +64,12 @@ _IMG_RE = re.compile(r"^[A-Za-z0-9_.-]+\.(jpe?g|png|webp|gif|avif)$", re.I)
 # "nosniff" a browser will not draw an image served as application/octet-stream.
 _IMG_MIME = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
              "webp": "image/webp", "gif": "image/gif", "avif": "image/avif"}
-# Some NutriTrace photos are not files but external URLs (Open Food Facts).
+# Open Food Facts photos are external URLs.
 _IMG_EXT_RE = re.compile(r"^https://[A-Za-z0-9.-]+/[^\s\"'<>]*$")
 _CODE_RE = re.compile(r"^\d{4,20}$")
+# code of a food copied as a recipe: 'recipe-<source id>-<hex>' (never matches _CODE_RE).
+RECIPE_COPY = "recipe-"
+_PHOTO_RE = re.compile(r"^data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/=\s]+)$")
 
 _lock = threading.Lock()
 _local = threading.local()
@@ -86,7 +95,8 @@ CREATE TABLE IF NOT EXISTS catalog_meta (
     favorite   INTEGER NOT NULL DEFAULT 0,
     notes      TEXT NOT NULL DEFAULT '',
     hidden     INTEGER NOT NULL DEFAULT 0,
-    updated_at REAL NOT NULL DEFAULT 0
+    updated_at REAL NOT NULL DEFAULT 0,
+    kind       TEXT NOT NULL DEFAULT ''      -- '' = product, 'product' | 'recipe'
 );
 
 CREATE TABLE IF NOT EXISTS catalog_prices (
@@ -98,17 +108,26 @@ CREATE TABLE IF NOT EXISTS catalog_prices (
     UNIQUE (product_id, supermarket)
 );
 
--- Products added from Open Food Facts. Exposed as EXTRA_BASE + id.
+-- Every food and recipe: from Open Food Facts, typed by hand or copied as a
+-- recipe. Exposed as EXTRA_BASE + id.
 CREATE TABLE IF NOT EXISTS catalog_extra (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    code       TEXT NOT NULL UNIQUE,         -- barcode
+    code       TEXT NOT NULL UNIQUE,         -- barcode, 'manual-…' or 'recipe-…'
     name       TEXT NOT NULL,
     brand      TEXT NOT NULL DEFAULT '',
-    nutrition  TEXT NOT NULL DEFAULT '{}',   -- same shape as NutriTrace, per 100 g
-    img_url    TEXT NOT NULL DEFAULT '',
-    created_at REAL NOT NULL
+    nutrition  TEXT NOT NULL DEFAULT '{}',   -- {calories, proteins, carbohydrates, fat}
+    img_url    TEXT NOT NULL DEFAULT '',     -- https:// (OFF) or photos/<file>
+    created_at REAL NOT NULL,
+    unit       TEXT NOT NULL DEFAULT 'g'     -- 'g' = per 100 g, 'serving' = per serving
 );
 """
+
+# Columns added after the first release. CREATE TABLE IF NOT EXISTS leaves an
+# existing table alone, so they are added with ALTER TABLE on start-up.
+ADDED_COLUMNS = (
+    ("catalog_meta", "kind", "TEXT NOT NULL DEFAULT ''"),
+    ("catalog_extra", "unit", "TEXT NOT NULL DEFAULT 'g'"),
+)
 
 
 def _db():
@@ -127,6 +146,10 @@ def _db():
 def init_db():
     conn = _db()
     conn.executescript(SCHEMA)
+    for table, column, ddl in ADDED_COLUMNS:
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in have:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
     conn.commit()
 
 
@@ -163,33 +186,26 @@ def _num(v):
     return n if n == n and n not in (float("inf"), float("-inf")) and n > 0 else 0.0
 
 
-# ─────────────────────────── Products (NutriTrace + Open Food Facts) ───────────────────────────
+# ─────────────────────────── Products ───────────────────────────
 
-_nt_warned = set()
-
-
-def _nt_conn():
-    """Read-only connection to NutriTrace, or None if disabled or not mounted."""
-    if not NT_ENABLED or not os.path.isfile(NT_DB):
-        return None
-    conn = sqlite3.connect(f"file:{NT_DB}?mode=ro", uri=True, timeout=5)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _per100(nutrition, portion):
-    """NutriTrace stores nutrition per portion; normalise to 100 g/ml."""
+def _nutrition(raw):
+    """Stored nutrition → {kcal, p, c, f}, per 100 g or per serving (see unit)."""
     try:
-        n = json.loads(nutrition or "{}")
+        n = json.loads(raw or "{}")
     except ValueError:
         n = {}
-    f = 100.0 / portion if portion and portion > 0 else 1.0
     return {
-        "kcal": round(_num(n.get("calories")) * f, 1),
-        "p": round(_num(n.get("proteins")) * f, 1),
-        "c": round(_num(n.get("carbohydrates")) * f, 1),
-        "f": round(_num(n.get("fat")) * f, 1),
+        "kcal": round(_num(n.get("calories")), 1),
+        "p": round(_num(n.get("proteins")), 1),
+        "c": round(_num(n.get("carbohydrates")), 1),
+        "f": round(_num(n.get("fat")), 1),
     }
+
+
+def _nutrition_raw(raw):
+    """Stored nutrition, cleaned (the four fields, numbers only)."""
+    n = _nutrition(raw)
+    return {"calories": n["kcal"], "proteins": n["p"], "carbohydrates": n["c"], "fat": n["f"]}
 
 
 def _auto_category(m):
@@ -204,58 +220,51 @@ def _auto_category(m):
 
 def _img_ok(url):
     url = url or ""
-    return bool(_IMG_EXT_RE.match(url) or _IMG_RE.match(os.path.basename(url)))
+    return bool(_IMG_EXT_RE.match(url) or (url.startswith(PHOTO_PREFIX) and _IMG_RE.match(os.path.basename(url))))
 
 
 def _products():
-    """NutriTrace foods followed by Open Food Facts products, de-duplicated by
-    name+brand (a food can be copied to several NutriTrace users; on a clash the
-    NutriTrace one wins)."""
-    rows = []
-    try:
-        conn = _nt_conn()
-        if conn is not None:
-            try:
-                rows = conn.execute(
-                    "SELECT id, name, brand, nutrition, portion, unit, img_url FROM foods"
-                    " WHERE deleted_at IS NULL ORDER BY id").fetchall()
-            finally:
-                conn.close()
-    except sqlite3.Error as e:   # corrupt file, wrong schema, locked: carry on without it
-        if str(e) not in _nt_warned:   # once per distinct error, not on every request
-            _nt_warned.add(str(e))
-            app.logger.warning("NutriTrace database not usable (%s): showing internet products only", e)
-        rows = []
-    rows = list(rows) + _db().execute(
-        "SELECT id + ? AS id, name, brand, nutrition, 100.0 AS portion, 'g' AS unit, img_url"
-        " FROM catalog_extra ORDER BY id", (EXTRA_BASE,)).fetchall()
-    seen, out = set(), []
-    for r in rows:
-        key = (r["name"] or "").strip().lower() + "|" + (r["brand"] or "").strip().lower()
-        if key not in seen:
-            seen.add(key)
-            out.append(r)
-    return out
+    return _db().execute(
+        "SELECT id + ? AS id, code, name, brand, nutrition, unit, img_url FROM catalog_extra ORDER BY id",
+        (EXTRA_BASE,)).fetchall()
+
+
+def _product_row(pid):
+    """The catalog_extra row of a product id, or None."""
+    if pid < EXTRA_BASE:
+        return None
+    return _db().execute("SELECT * FROM catalog_extra WHERE id=?", (pid - EXTRA_BASE,)).fetchone()
 
 
 def _product_img_url(pid):
     """Stored photo of a product, or None if the product does not exist."""
-    if pid >= EXTRA_BASE:
-        row = _db().execute("SELECT img_url FROM catalog_extra WHERE id=?",
-                            (pid - EXTRA_BASE,)).fetchone()
-        return None if row is None else (row["img_url"] or "")
-    try:
-        conn = _nt_conn()
-        if conn is None:
-            return None
-        try:
-            row = conn.execute("SELECT img_url FROM foods WHERE id=? AND deleted_at IS NULL",
-                               (pid,)).fetchone()
-        finally:
-            conn.close()
-    except sqlite3.Error:
-        return None
+    row = _product_row(pid)
     return None if row is None else (row["img_url"] or "")
+
+
+def _save_photo(raw):
+    """data: URL → img_url in PHOTO_DIR, or None if it is not a usable image."""
+    m = _PHOTO_RE.match(str(raw or ""))
+    try:
+        data = base64.b64decode(m.group(2)) if m else None
+    except ValueError:
+        data = None
+    if not data or len(data) > PHOTO_MAX:
+        return None
+    os.makedirs(PHOTO_DIR, exist_ok=True)
+    name = uuid.uuid4().hex + "." + {"jpeg": "jpg"}.get(m.group(1), m.group(1))
+    with open(os.path.join(PHOTO_DIR, name), "wb") as f:
+        f.write(data)
+    return PHOTO_PREFIX + name
+
+
+def _drop_photo(img_url):
+    """Delete an uploaded photo; Open Food Facts URLs are left alone."""
+    if (img_url or "").startswith(PHOTO_PREFIX) and _IMG_RE.match(os.path.basename(img_url)):
+        try:
+            os.remove(os.path.join(PHOTO_DIR, os.path.basename(img_url)))
+        except OSError:
+            pass
 
 
 def _img_index():
@@ -369,14 +378,17 @@ def list_products():
     items = []
     for r in rows:
         m = meta.get(r["id"])
-        per = _per100(r["nutrition"], r["portion"])
+        per = _nutrition(r["nutrition"])
         auto = _auto_category(per)
         manual = m["category"] if m and m["category"] in CATEGORIES else ""
         items.append({
             "id": r["id"], "name": r["name"], "brand": r["brand"] or "",
-            "unit": r["unit"] or "g", "per100": per,
+            "unit": r["unit"] if r["unit"] in UNITS else "g", "per100": per,
+            "kind": m["kind"] if m and m["kind"] in KINDS else "product",
             "auto_category": auto, "manual_category": manual, "category": manual or auto,
             "img": _img_ok(r["img_url"]),
+            # Photo version: /img is cached for a day, so a new photo needs a new URL.
+            "img_v": uuid.uuid5(uuid.NAMESPACE_URL, r["img_url"] or "").hex[:8],
             "rating": m["rating"] if m else 0,
             "favorite": bool(m["favorite"]) if m else False,
             "notes": m["notes"] if m else "",
@@ -384,8 +396,7 @@ def list_products():
             "prices": prices.get(r["id"], []),
             "in_list": _txt(r["name"], NAME_MAX).lower() in pending,
         })
-    return jsonify({"nutritrace": NT_ENABLED and os.path.isfile(NT_DB), "items": items,
-                    "supermarkets": sorted(sups.values(), key=str.lower)})
+    return jsonify({"items": items, "supermarkets": sorted(sups.values(), key=str.lower)})
 
 
 @app.get("/api/products/<int:pid>/img")
@@ -395,19 +406,74 @@ def product_img(pid):
         return redirect(url, code=302)
     name = os.path.basename(url)
     m = _IMG_RE.match(name)
-    if not m:
+    if not url.startswith(PHOTO_PREFIX) or not m:
         abort(404)
-    return send_from_directory(NT_UPLOADS, name, max_age=86400, mimetype=_IMG_MIME[m.group(1).lower()])
+    return send_from_directory(PHOTO_DIR, name, max_age=86400, mimetype=_IMG_MIME[m.group(1).lower()])
+
+
+def _macros(data, unit):
+    """kcal/p/c/f from a form (decimal comma accepted). A serving can hold more than
+    100 g, so the caps are five times higher per serving."""
+    big = 5 if unit == "serving" else 1
+
+    def one(key, top):
+        v = data.get(key)
+        if isinstance(v, str):
+            v = v.strip().replace(",", ".")
+        return round(min(_num(v), top * big), 1)
+
+    return {"calories": one("kcal", 900), "proteins": one("p", 100),
+            "carbohydrates": one("c", 100), "fat": one("f", 100)}
 
 
 @app.patch("/api/products/<int:pid>")
 def update_product(pid):
-    if _product_img_url(pid) is None:
+    """Your data about a product (category, kind, rating, favorite, notes, hidden)
+    and, when sent, its own fields: name, brand, unit (recipes only), kcal/p/c/f and
+    a new photo. The barcode cannot be changed."""
+    row = _product_row(pid)
+    if row is None:
         abort(404)
     data = request.get_json(silent=True) or {}
+    old_photo = None
     with _lock:
         conn = _db()
         conn.execute("INSERT OR IGNORE INTO catalog_meta (product_id) VALUES (?)", (pid,))
+        if "kind" in data:
+            kind = str(data["kind"] or "")
+            conn.execute("UPDATE catalog_meta SET kind=? WHERE product_id=?",
+                         (kind if kind in KINDS else "", pid))
+        kind = conn.execute("SELECT kind FROM catalog_meta WHERE product_id=?", (pid,)).fetchone()["kind"]
+        fields = {}
+        if "name" in data:
+            fields["name"] = _txt(data["name"], NAME_MAX)
+            if not fields["name"]:
+                conn.rollback()
+                return jsonify({"error": "Name required"}), 400
+        if "brand" in data:
+            fields["brand"] = _txt(data["brand"], 80)
+        unit = row["unit"] if row["unit"] in UNITS else "g"
+        if "unit" in data and kind == "recipe":
+            unit = fields["unit"] = "serving" if data["unit"] == "serving" else "g"
+        if any(k in data for k in ("kcal", "p", "c", "f")):
+            try:
+                nut = json.loads(row["nutrition"] or "{}")
+            except ValueError:
+                nut = {}
+            new = _macros(data, unit)
+            for key, field in (("kcal", "calories"), ("p", "proteins"), ("c", "carbohydrates"), ("f", "fat")):
+                if key in data:
+                    nut[field] = new[field]
+            fields["nutrition"] = json.dumps(nut)
+        if data.get("photo"):
+            url = _save_photo(data["photo"])
+            if not url:
+                conn.rollback()
+                return jsonify({"error": "Invalid or too large photo"}), 400
+            fields["img_url"], old_photo = url, row["img_url"]
+        if fields:
+            conn.execute("UPDATE catalog_extra SET " + ", ".join(k + "=?" for k in fields) + " WHERE id=?",
+                         (*fields.values(), row["id"]))
         if "category" in data:
             cat = str(data["category"] or "")
             conn.execute("UPDATE catalog_meta SET category=? WHERE product_id=?",
@@ -427,7 +493,62 @@ def update_product(pid):
                          (_txt(data["notes"], NOTES_MAX), pid))
         conn.execute("UPDATE catalog_meta SET updated_at=? WHERE product_id=?", (time.time(), pid))
         conn.commit()
+    _drop_photo(old_photo)
     return jsonify({"ok": True})
+
+
+@app.delete("/api/products/<int:pid>")
+def delete_product(pid):
+    """Delete a food or recipe with its card data, prices and uploaded photo."""
+    with _lock:
+        conn = _db()
+        row = _product_row(pid)
+        if row is None:
+            abort(404)
+        conn.execute("DELETE FROM catalog_extra WHERE id=?", (row["id"],))
+        conn.execute("DELETE FROM catalog_meta WHERE product_id=?", (pid,))
+        conn.execute("DELETE FROM catalog_prices WHERE product_id=?", (pid,))
+        conn.commit()
+    _drop_photo(row["img_url"])
+    return ("", 204)
+
+
+@app.post("/api/products/as-recipe")
+def products_as_recipe():
+    """Copy foods to the Recipes tab: name, brand, nutrition per 100 g, photo, column,
+    rating, favourite and notes. The food stays on the board; a food already copied
+    once is skipped."""
+    data = request.get_json(silent=True) or {}
+    try:
+        ids = list(dict.fromkeys(int(i) for i in (data.get("ids") or [])[:TO_LIST_MAX]))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid ids"}), 400
+    added = skipped = 0
+    with _lock:
+        conn = _db()
+        for pid in ids:
+            row = _product_row(pid)
+            if row is None or row["code"].startswith(RECIPE_COPY):
+                continue
+            if conn.execute("SELECT 1 FROM catalog_extra WHERE code LIKE ?",
+                            (RECIPE_COPY + str(pid) + "-%",)).fetchone():
+                skipped += 1
+                continue
+            cur = conn.execute(
+                "INSERT INTO catalog_extra (code, name, brand, nutrition, img_url, created_at, unit)"
+                " VALUES (?,?,?,?,?,?,'g')",
+                (RECIPE_COPY + str(pid) + "-" + uuid.uuid4().hex[:8], row["name"], row["brand"],
+                 json.dumps(_nutrition_raw(row["nutrition"])),
+                 row["img_url"] if _IMG_EXT_RE.match(row["img_url"] or "") else "", time.time()))
+            m = conn.execute("SELECT * FROM catalog_meta WHERE product_id=?", (pid,)).fetchone()
+            conn.execute(
+                "INSERT INTO catalog_meta (product_id, category, rating, favorite, notes, hidden, updated_at, kind)"
+                " VALUES (?,?,?,?,?,0,?,'recipe')",
+                (cur.lastrowid + EXTRA_BASE, m["category"] if m else "", m["rating"] if m else 0,
+                 m["favorite"] if m else 0, m["notes"] if m else "", time.time()))
+            added += 1
+        conn.commit()
+    return jsonify({"added": added, "skipped": skipped})
 
 
 @app.post("/api/products/<int:pid>/prices")
@@ -474,7 +595,7 @@ def products_to_list():
         return jsonify({"error": "Invalid ids"}), 400
     if not ids:
         return jsonify({"error": "Nothing selected"}), 400
-    rows = [r for r in _products() if r["id"] in ids]
+    rows = [r for r in _products() if r["id"] in ids]   # recipes are not sent to the list by the page
     added = updated = 0
     with _lock:
         conn = _db()
@@ -511,7 +632,7 @@ def _first_img(h, *keys):
 
 
 def _off_norm(h):
-    """Open Food Facts product → name, brand, nutrition per 100 g (NutriTrace shape) and photo."""
+    """Open Food Facts product → name, brand, nutrition per 100 g and photo."""
     n = h.get("nutriments") or {}
     brands = h.get("brands") or ""
     if isinstance(brands, list):
@@ -558,7 +679,7 @@ def off_search():
         it = _off_norm(h)
         if not it["name"] or not _CODE_RE.match(it["code"]):
             continue
-        it["per100"] = _per100(json.dumps(it.pop("nutrition")), None)
+        it["per100"] = _nutrition(json.dumps(it.pop("nutrition")))
         it["auto_category"] = _auto_category(it["per100"])
         it["added"] = it["code"] in have
         out.append(it)
@@ -651,53 +772,60 @@ def off_product(code):
     it = _off_norm({**prod, "code": code}) if prod else None
     if not it or not it["name"]:
         return jsonify({"found": False, "code": code, "error": "Not on Open Food Facts"}), 404
-    it["per100"] = _per100(json.dumps(it.pop("nutrition")), None)
+    it["per100"] = _nutrition(json.dumps(it.pop("nutrition")))
     it["auto_category"] = _auto_category(it["per100"])
     it["added"] = False
     return jsonify({"found": True, "local": False, "item": it})
 
 
-# ─────────────────────────── API: products typed by hand ───────────────────────────
+# ─────────────────────────── API: foods and recipes typed by hand ───────────────────────────
 
 @app.post("/api/products/custom")
 def add_custom_product():
-    """A product that is not on Open Food Facts: name, brand, optional barcode and
-    macros per 100 g. Stored in catalog_extra like an internet product, so it gets
-    prices, rating and notes the same way. Without a barcode it gets a 'manual-' code."""
+    """A food that is not on Open Food Facts, or a recipe (kind='recipe'). Stored in
+    catalog_extra like an internet product, so it gets prices, rating and notes the
+    same way. Without a barcode it gets a 'manual-' code. Recipes may also carry
+    unit ('serving' or 'g'), rating, favorite, notes and a photo (data: URL)."""
     data = request.get_json(silent=True) or {}
     name = _txt(data.get("name"), NAME_MAX)
     brand = _txt(data.get("brand"), 80)
     code = str(data.get("code") or "").strip()
     cat = str(data.get("category") or "")
+    kind = "recipe" if data.get("kind") == "recipe" else "product"
+    unit = "serving" if kind == "recipe" and data.get("unit") == "serving" else "g"
+    try:
+        rating = max(0, min(5, int(data.get("rating") or 0)))
+    except (TypeError, ValueError):
+        rating = 0
     if not name:
         return jsonify({"error": "Name required"}), 400
     if code and not _CODE_RE.match(code):
         return jsonify({"error": "Invalid barcode"}), 400
     if cat and cat not in CATEGORIES:
         return jsonify({"error": "Pick protein, carbs or fat"}), 400
-
-    def macro(key, top):
-        v = data.get(key)
-        if isinstance(v, str):
-            v = v.strip().replace(",", ".")
-        return round(min(_num(v), top), 1)
-
-    nutrition = {"calories": macro("kcal", 900), "proteins": macro("p", 100),
-                 "carbohydrates": macro("c", 100), "fat": macro("f", 100)}
+    nutrition = _macros(data, unit)
     with _lock:
         conn = _db()
         if code and conn.execute("SELECT 1 FROM catalog_extra WHERE code=?", (code,)).fetchone():
             return jsonify({"error": "A product with that barcode is already on the board"}), 409
+        img_url = ""
+        if data.get("photo"):
+            img_url = _save_photo(data["photo"])
+            if not img_url:
+                return jsonify({"error": "Invalid or too large photo"}), 400
         cur = conn.execute(
-            "INSERT INTO catalog_extra (code, name, brand, nutrition, img_url, created_at) VALUES (?,?,?,?,?,?)",
-            (code or "manual-" + uuid.uuid4().hex[:12], name, brand, json.dumps(nutrition), "", time.time()))
+            "INSERT INTO catalog_extra (code, name, brand, nutrition, img_url, created_at, unit) VALUES (?,?,?,?,?,?,?)",
+            (code or "manual-" + uuid.uuid4().hex[:12], name, brand, json.dumps(nutrition), img_url,
+             time.time(), unit))
         pid = cur.lastrowid + EXTRA_BASE
         conn.execute("INSERT OR IGNORE INTO catalog_meta (product_id) VALUES (?)", (pid,))
-        conn.execute("UPDATE catalog_meta SET category=?, hidden=0, updated_at=? WHERE product_id=?",
-                     (cat, time.time(), pid))
+        conn.execute("UPDATE catalog_meta SET category=?, kind=?, rating=?, favorite=?, notes=?, hidden=0,"
+                     " updated_at=? WHERE product_id=?",
+                     (cat, kind, rating, 1 if data.get("favorite") else 0,
+                      _txt(data.get("notes"), NOTES_MAX), time.time(), pid))
         conn.commit()
-    per = _per100(json.dumps(nutrition), None)
-    return jsonify({"id": pid, "name": name, "category": cat or _auto_category(per)})
+    return jsonify({"id": pid, "name": name, "kind": kind,
+                    "category": cat or _auto_category(_nutrition(json.dumps(nutrition)))})
 
 
 init_db()

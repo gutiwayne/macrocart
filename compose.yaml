@@ -10,10 +10,6 @@ services:
         required: false
     volumes:
       - macrocart-data:/app/data
-      # Optional: a NutriTrace data folder, read-only. Without it the board starts
-      # empty and you fill it from "Search the internet".
-      - ${NUTRITRACE_DIR:-./nutritrace}/db:/nutritrace/db:ro
-      - ${NUTRITRACE_DIR:-./nutritrace}/uploads:/nutritrace/uploads:ro
     read_only: true
     tmpfs:
       - /tmp

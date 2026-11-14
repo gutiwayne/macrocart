@@ -40,11 +40,6 @@ Products you add are stored in your local database; if you redistribute that dat
 the ODbL terms apply. Images are not copied: the browser loads them from Open Food
 Facts.
 
-## NutriTrace
-
-macrocart reads the database of [NutriTrace](https://github.com/traceapps/nutritrace)
-read-only. No NutriTrace code is included.
-
 ## Icons
 
 The inline SVG icons are simple shapes drawn for this project in the style of

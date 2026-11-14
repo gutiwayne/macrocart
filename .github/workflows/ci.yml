@@ -41,12 +41,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build and start (with an unusable NutriTrace file)
-        # A garbage database must not break the app: it falls back to internet products.
-        run: |
-          mkdir -p nutritrace/db nutritrace/uploads
-          echo "not a database" > nutritrace/db/nutritrace.db
-          docker compose up -d --build
+      - name: Build and start
+        run: docker compose up -d --build
 
       - name: Wait until healthy
         run: |
@@ -69,6 +65,15 @@ jobs:
           done
           curl -s -X POST -H 'Content-Type: application/json' -d '{"name":"Test"}' http://127.0.0.1:5000/api/items | grep -q '"Test"'
           curl -s http://127.0.0.1:5000/api/products | grep -q '"items":\[\]'
+          # A recipe typed by hand, edited, then deleted.
+          id="$(curl -s -X POST -H 'Content-Type: application/json' \
+            -d '{"kind":"recipe","name":"Lentils","unit":"serving","kcal":"650","p":"38"}' \
+            http://127.0.0.1:5000/api/products/custom | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+          curl -s http://127.0.0.1:5000/api/products | grep -q '"kind":"recipe"'
+          curl -s -X PATCH -H 'Content-Type: application/json' -d '{"name":"Lentil stew"}' \
+            "http://127.0.0.1:5000/api/products/$id" | grep -q '"ok":true'
+          code="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "http://127.0.0.1:5000/api/products/$id")"
+          [ "$code" = 204 ]
 
       - name: Logs
         if: always()
