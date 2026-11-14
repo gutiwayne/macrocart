@@ -97,9 +97,10 @@ are dropped. All paths are relative, so the app works under a sub-path such as
 
 ## Android app
 
-An Android app can wrap the Pages URL as a Trusted Web Activity; the origin then
-needs `/.well-known/assetlinks.json` at the root of `gutiwayne.github.io`, which a
-project page cannot serve, so it lives in the `gutiwayne.github.io` repository.
+An Android app can wrap the Pages URL as a Trusted Web Activity. Full-screen
+verification needs `/.well-known/assetlinks.json` at the root of the origin
+(`gutiwayne.github.io`), which a project page cannot serve; without it the app
+works but shows the browser's URL bar.
 
 ## Front end
 
