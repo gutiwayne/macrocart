@@ -1,6 +1,7 @@
 package io.github.gutiwayne.macrocart;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
@@ -216,6 +217,7 @@ public class MainActivity extends Activity {
 
     @Override
     @SuppressWarnings("deprecation")
+    @SuppressLint("GestureBackNavigation") // Android 13+ uses the callback registered in onCreate
     public void onBackPressed() { // Android 12L and older
         goBack();
     }
