@@ -47,7 +47,7 @@ jobs:
           echo "file=$OUT" >> "$GITHUB_OUTPUT"
           echo "cert=$(grep -m1 'SHA-256 digest' signature.txt | awk '{print $NF}')" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macrocart-apk
           path: |
