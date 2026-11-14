@@ -34,6 +34,12 @@ The inline SVG icons are simple shapes drawn for this project in the style of
 [Lucide](https://lucide.dev) (ISC License). The app icon (`web/icons/`) was drawn
 for this project.
 
+## Android app
+
+The APK bundles [AndroidX WebKit](https://developer.android.com/jetpack/androidx/releases/webkit)
+(`androidx.webkit:webkit`, Apache-2.0). Built with the Android Gradle Plugin and the
+Gradle wrapper (`android/gradle/wrapper/`, Apache-2.0).
+
 ## Test tooling (not bundled)
 
 [Playwright](https://github.com/microsoft/playwright) (Apache-2.0) is installed in CI

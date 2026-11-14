@@ -1,3 +1,8 @@
 node_modules/
 *.json.tmp
 test-results/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.p12

@@ -11,9 +11,10 @@ recipes, ratings, notes, prices, photos) is stored **on your device**: there is 
 server and no account. Export it to one file to move it to another device or keep
 a backup.
 
-**Open it:** <https://gutiwayne.github.io/macrocart/> — then "Install app" / "Add to
-Home screen" in your browser's menu. It works offline once installed (the internet
-search and product photos need a connection).
+**Install:** download `macrocart-vX.Y.Z.apk` from the
+[latest release](https://github.com/gutiwayne/macrocart/releases/latest) and open it
+on your Android phone (allow installing from your browser or file manager). The
+whole app is inside the APK: it does not load anything from GitHub or any server.
 
 A single static page with no build step and no external assets (the barcode
 reader is bundled in `web/vendor/`).
@@ -58,8 +59,8 @@ downloaded). On the other device, ⚙ → **Import data…**, pick the file and 
   deleted.
 - **Replace everything here** — the device ends up exactly like the file.
 
-Export now and then as a backup: clearing the browser's site data, or uninstalling
-the app, deletes everything. The app asks the browser for persistent storage, so
+Export now and then as a backup: uninstalling the app (or clearing the browser's
+site data) deletes everything. The app asks the browser for persistent storage, so
 it is not evicted when space runs low.
 
 ## Privacy and network
@@ -80,17 +81,25 @@ Protein if at least 30 % of its calories from macros come from protein (so eggs
 and legumes count as protein); otherwise whichever weighs more of carbs and fat.
 A product with no macros goes to carbs. The card lets you override it.
 
-## Self-hosting
+## Android app
+
+`android/` is a WebView that serves `web/` from the APK's assets at
+`https://appassets.androidplatform.net` (a secure origin, so the camera and storage
+work). It asks for the camera only when you scan. "Export data" opens Android's
+"save as" dialog. Data lives in the app's own storage: uninstalling deletes it, so
+export first.
+
+Releases: push a tag `vX.Y.Z`; `.github/workflows/release.yml` builds, signs and
+publishes the APK. Updates install over the previous version (same signing key).
+
+## Self-hosting the web version
 
 Serve the `web/` folder from any static host over HTTPS (the camera and offline
-mode need HTTPS, or `localhost`). For example, locally:
+mode need HTTPS, or `localhost`):
 
 ```bash
 python3 -m http.server -d web 8000   # http://localhost:8000
 ```
-
-This repository publishes `web/` to GitHub Pages on every push to `main`
-(`.github/workflows/pages.yml`).
 
 ### Upgrading from the server version
 

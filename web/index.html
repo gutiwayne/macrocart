@@ -1381,6 +1381,8 @@ function toast(msg, action){
     try {
       const data = await macrocart.exportAll();
       const name = "macrocart-" + new Date().toISOString().slice(0, 10) + ".json";
+      // Android app: the system "save as" dialog (a WebView cannot download blobs).
+      if(window.MacrocartAndroid){ window.MacrocartAndroid.saveFile(name, JSON.stringify(data)); return; }
       const file = new File([JSON.stringify(data)], name, { type: "application/json" });
       if(navigator.canShare && navigator.canShare({ files: [file] })){
         try { await navigator.share({ files: [file], title: name }); toast("Exported"); return; }
@@ -1426,7 +1428,7 @@ function toast(msg, action){
   try { const t = sessionStorage.getItem("macrocart.toast"); if(t){ sessionStorage.removeItem("macrocart.toast"); toast(t); } } catch(e){}
 
   // Offline use and "Install app".
-  if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  if("serviceWorker" in navigator && !window.MacrocartAndroid) navigator.serviceWorker.register("sw.js").catch(() => {});
 })();
 </script>
 </body>

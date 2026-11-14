@@ -1,0 +1,62 @@
+plugins {
+    id "com.android.application"
+}
+
+// The app is the web page in ../web, copied into the APK's assets at build time.
+// Version: MACROCART_VERSION (the release tag without "v", e.g. 2.1.0), default below.
+def appVersion = (System.getenv("MACROCART_VERSION") ?: "2.0.0").replaceFirst(/^v/, "")
+def parts = (appVersion.tokenize(".-") + ["0", "0", "0"]).take(3).collect { it.isInteger() ? it as int : 0 }
+def keystore = System.getenv("MACROCART_KEYSTORE")
+def webAssets = layout.buildDirectory.dir("webassets").get().asFile
+
+android {
+    namespace "io.github.gutiwayne.macrocart"
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "io.github.gutiwayne.macrocart"
+        minSdk 24
+        targetSdk 36
+        versionCode parts[0] * 10000 + parts[1] * 100 + parts[2]
+        versionName appVersion
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets.main.assets.srcDirs += webAssets
+
+    // CI decodes the keystore secret to $MACROCART_KEYSTORE; without it the release build stays unsigned.
+    signingConfigs {
+        if (keystore) {
+            release {
+                storeFile file(keystore)
+                storeType "pkcs12"
+                storePassword System.getenv("MACROCART_KEYSTORE_PASSWORD")
+                keyAlias "macrocart"
+                keyPassword System.getenv("MACROCART_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (keystore) signingConfig signingConfigs.release
+        }
+    }
+}
+
+def copyWeb = tasks.register("copyWeb", Sync) {
+    from(rootProject.file("../web")) {
+        exclude "sw.js"   // the app reads its files from the APK; no service worker
+    }
+    into new File(webAssets, "web")
+}
+tasks.named("preBuild") { dependsOn copyWeb }
+
+dependencies {
+    implementation "androidx.webkit:webkit:1.12.1"
+}

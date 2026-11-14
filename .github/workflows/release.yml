@@ -1,0 +1,70 @@
+name: Release
+
+# Publishes the signed Android app when a tag is pushed, e.g.: git tag v2.0.0 && git push origin v2.0.0
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:      # manual run: builds and verifies the signed APK as an artifact, no release
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Signed APK and release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build signed release
+        working-directory: android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          MACROCART_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || { echo "::error::Missing secret SIGNING_KEYSTORE_BASE64"; exit 1; }
+          export MACROCART_KEYSTORE="$RUNNER_TEMP/macrocart.p12"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then export MACROCART_VERSION="${GITHUB_REF_NAME#v}"; fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$MACROCART_KEYSTORE"
+          ./gradlew --no-daemon assembleRelease
+          rm -f "$MACROCART_KEYSTORE"
+
+      - name: Verify signature
+        id: apk
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then OUT="macrocart-${GITHUB_REF_NAME}.apk"; else OUT="macrocart-${GITHUB_SHA::7}.apk"; fi
+          cp android/app/build/outputs/apk/release/app-release.apk "$OUT"
+          "$APKSIGNER" verify --print-certs "$OUT" | tee signature.txt
+          grep -q "SHA-256 digest" signature.txt
+          sha256sum "$OUT" > "$OUT.sha256"
+          echo "file=$OUT" >> "$GITHUB_OUTPUT"
+          echo "cert=$(grep -m1 'SHA-256 digest' signature.txt | awk '{print $NF}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macrocart-apk
+          path: |
+            ${{ steps.apk.outputs.file }}
+            ${{ steps.apk.outputs.file }}.sha256
+          retention-days: 14
+
+      - name: Create release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<NOTES
+          **macrocart** for Android: shopping list, protein · carbs · fat food board and recipes. Everything stays on your phone; export/import moves it between devices.
+
+          - Signing certificate SHA-256 fingerprint: \`${{ steps.apk.outputs.cert }}\`
+          - Verify the APK with \`${{ steps.apk.outputs.file }}.sha256\`.
+          NOTES
+          gh release create "$GITHUB_REF_NAME" "${{ steps.apk.outputs.file }}" "${{ steps.apk.outputs.file }}.sha256" \
+            --title "macrocart $GITHUB_REF_NAME" --notes-file notes.md --generate-notes

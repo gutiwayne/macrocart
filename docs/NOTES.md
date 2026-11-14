@@ -87,20 +87,31 @@ Android, macOS, ChromeOS); otherwise it loads the bundled ZXing ponyfill from
 the library's CDN default. The ponyfill checks the wasm's SHA-256. A QR code is
 accepted when it is a GS1 Digital Link (`…/01/<GTIN>…`).
 
-## Offline and updates (`web/sw.js`)
+## Offline and updates in a browser (`web/sw.js`)
 
 The service worker precaches the shell (page, scripts, icons, scanner) and serves
 same-origin files network-first, falling back to the cache offline. Open Food
 Facts requests are not intercepted. Bump `VERSION` on each release so old caches
 are dropped. All paths are relative, so the app works under a sub-path such as
-`/macrocart/` on GitHub Pages.
+`/macrocart/`.
 
-## Android app
+## Android app (`android/`)
 
-An Android app can wrap the Pages URL as a Trusted Web Activity. Full-screen
-verification needs `/.well-known/assetlinks.json` at the root of the origin
-(`gutiwayne.github.io`), which a project page cannot serve; without it the app
-works but shows the browser's URL bar.
+- A plain `Activity` with a WebView; `androidx.webkit`'s `WebViewAssetLoader`
+  serves the APK's `assets/web/` at `https://appassets.androidplatform.net/assets/web/`,
+  a secure origin, so IndexedDB, `getUserMedia` and cross-origin `fetch` to Open
+  Food Facts behave as in a browser. No `file://` access.
+- Gradle copies `../web` into the assets at build time (task `copyWeb`), without
+  `sw.js`; the page does not register the service worker inside the app.
+- Camera: `onPermissionRequest` asks for the Android `CAMERA` permission, then
+  grants video capture to the page.
+- Export: a WebView cannot download `blob:` URLs, so the page calls
+  `window.MacrocartAndroid.saveFile(name, text)`, which opens the system
+  "save as" dialog (`ACTION_CREATE_DOCUMENT`). Import uses the normal file input.
+- Version from the tag (`MACROCART_VERSION`): `versionCode = major*10000 + minor*100 + patch`.
+- Signing: PKCS12 key, alias `macrocart`, from the repository secrets
+  `SIGNING_KEYSTORE_BASE64` / `SIGNING_PASSWORD`. Keep the key: an APK signed with
+  another key cannot update the installed app.
 
 ## Front end
 
