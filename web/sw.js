@@ -1,6 +1,6 @@
 /* macrocart service worker: the app shell works offline. Your data is in IndexedDB,
    not here. Bump VERSION on every release so phones pick up the new files. */
-const VERSION = "macrocart-v2.0.0";
+const VERSION = "macrocart-v2.1.0";
 const SHELL = [
   "./", "index.html", "manifest.webmanifest", "js/db.js", "js/api.js",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png",

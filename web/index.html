@@ -270,13 +270,14 @@
       <button class="btn" type="button" id="scanOpen">📷 Scan</button>
       <button class="btn ghost" type="button" id="manOpen">＋ New food</button>
     </div>
-    <p class="hint">Tap cards to pick them, then add them to the list or copy them to Recipes. <b>ⓘ</b> opens the card: rating, notes and prices.</p>
+    <p class="hint">Tap cards to pick them, then add them to the list or copy them to Recipes; pick one to edit it. <b>ⓘ</b> opens the card: rating, notes and prices.</p>
     <p class="hint" id="catHint" hidden></p>
     <div class="board" id="catBoard"></div>
     <div class="sel-bar" id="selBar" hidden>
       <span id="selCount"></span>
       <button class="btn ghost" type="button" id="selClear">Clear</button>
       <button class="btn ghost" type="button" id="selDel">Delete</button>
+      <button class="btn ghost" type="button" id="selFav">♥ Favourite</button>
       <button class="btn ghost" type="button" id="selEdit" hidden>Edit</button>
       <button class="btn ghost" type="button" id="selRec">Add as recipe</button>
       <button class="btn" type="button" id="selAdd">Add to list</button>
@@ -347,6 +348,9 @@
     <input type="text" id="manBrand" class="cm-input" maxlength="80">
     <label class="cm-lbl" for="manCode">Barcode (optional)</label>
     <input type="text" id="manCode" class="cm-input" inputmode="numeric" pattern="[0-9]{4,20}" maxlength="20">
+    <label class="cm-lbl" for="manPhoto">Photo (optional)</label>
+    <input type="file" id="manPhoto" class="cm-input" accept="image/*">
+    <img id="manPrev" class="rn-prev" alt="" hidden>
     <div class="man-macros">
       <label>kcal<input type="text" id="manKcal" class="cm-input" inputmode="decimal" maxlength="6"></label>
       <label>Protein<input type="text" id="manP" class="cm-input" inputmode="decimal" maxlength="5"></label>
@@ -360,6 +364,11 @@
       <option value="carbs">Carbs</option>
       <option value="fat">Fat</option>
     </select>
+    <span class="cm-lbl">Rating</span>
+    <div class="cm-stars" id="manStars"></div>
+    <label class="toggle"><input type="checkbox" id="manFav"> Favourite</label>
+    <label class="cm-lbl" for="manNotes">Notes</label>
+    <textarea id="manNotes" class="cm-input" rows="4" maxlength="500" placeholder="Taste, where to buy it, how to use it…"></textarea>
     <button class="btn" type="submit" id="manSave" style="width:100%;margin-top:12px">Save</button>
     <button class="btn ghost" type="button" id="manClose" style="width:100%;margin-top:8px">Close</button>
   </form>
@@ -807,6 +816,8 @@ function toast(msg, action){
     $("#selBar").hidden = !n;
     $("#selCount").textContent = n + " selected";
     $("#selEdit").hidden = n !== 1;
+    const allFav = n > 0 && items.filter(i => selected.has(i.id)).every(i => i.favorite);
+    $("#selFav").textContent = allFav ? "♡ Unfavourite" : "♥ Favourite";
   }
   function renderRecBar(){
     const it = recSel === null ? null : items.find(i => i.id === recSel);
@@ -923,6 +934,18 @@ function toast(msg, action){
   });
   $("#selAdd").addEventListener("click", addSelected);
   $("#selClear").addEventListener("click", () => { selected.clear(); render(); });
+  // ♥: marks the picked foods as favourites; if they all already are, unmarks them.
+  $("#selFav").addEventListener("click", async () => {
+    const pick = items.filter(i => selected.has(i.id)); if(!pick.length) return;
+    const fav = !pick.every(i => i.favorite), btn = $("#selFav"); btn.disabled = true;
+    try {
+      for(const it of pick)
+        await api("/api/products/" + it.id, { method: "PATCH", body: JSON.stringify({ favorite: fav }) });
+      toast(pick.length + (fav ? " marked as favourite" : " removed from favourites"));
+      selected.clear(); await load();
+    } catch(e){ toast(e.message); }
+    finally { btn.disabled = false; }
+  });
   $("#selEdit").addEventListener("click", () => {
     const it = items.find(i => i.id === [...selected][0]); if(it) openManual({}, it);
   });
@@ -1205,11 +1228,18 @@ function toast(msg, action){
   });
 
   /* Food typed by hand (not on Open Food Facts) */
-  let manEdit = null;   // food being edited, or null = new
+  let manEdit = null, manRating = 0, manPhoto = "";   // manEdit: food being edited, or null = new
+  function manStars(){
+    $("#manStars").innerHTML = [1,2,3,4,5].map(n =>
+      '<button type="button" data-star="' + n + '" class="' + (n <= manRating ? "on" : "") +
+      '" aria-label="' + n + ' stars">★</button>').join("");
+  }
   function openManual(pre = {}, it = null){
     $("#manForm").reset();
-    manEdit = it;
+    manEdit = it; manRating = it ? it.rating : 0; manPhoto = ""; manStars();
     $("#manTitle").textContent = it ? "Edit food" : "New food";
+    $("#manSave").textContent = it ? "Save changes" : "Save";
+    $("#manPrev").hidden = true; $("#manPrev").removeAttribute("src");
     $("#manCode").disabled = !!it;   // the barcode cannot be changed
     $("#manName").value = it ? it.name : pre.name || "";
     $("#manCode").value = pre.code || "";
@@ -1218,11 +1248,25 @@ function toast(msg, action){
       $("#manKcal").value = it.per100.kcal; $("#manP").value = it.per100.p;
       $("#manC").value = it.per100.c; $("#manF").value = it.per100.f;
       $("#manCat").value = it.manual_category;
+      $("#manFav").checked = it.favorite; $("#manNotes").value = it.notes;
+      if(it.img){ $("#manPrev").src = it.img_src; $("#manPrev").hidden = false; }
     }
     $("#manBack").hidden = false;
     $("#manName").focus();
   }
   function closeManual(){ $("#manBack").hidden = true; }
+  $("#manPhoto").addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0];
+    manPhoto = "";
+    if(!f) return;
+    try { manPhoto = await shrink(f); $("#manPrev").src = manPhoto; $("#manPrev").hidden = false; }
+    catch(err){ e.target.value = ""; toast(err.message); }
+  });
+  $("#manStars").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-star]"); if(!b) return;
+    const n = Number(b.dataset.star);
+    manRating = manRating === n ? 0 : n; manStars();
+  });
   $("#manOpen").addEventListener("click", () => openManual());
   $("#manClose").addEventListener("click", closeManual);
   $("#manBack").addEventListener("click", (e) => { if(e.target.id === "manBack") closeManual(); });
@@ -1230,7 +1274,9 @@ function toast(msg, action){
     e.preventDefault();
     const val = (s) => $(s).value.trim();
     const body = { name: val("#manName"), brand: val("#manBrand"), code: val("#manCode"),
-      kcal: val("#manKcal"), p: val("#manP"), c: val("#manC"), f: val("#manF"), category: $("#manCat").value };
+      kcal: val("#manKcal"), p: val("#manP"), c: val("#manC"), f: val("#manF"), category: $("#manCat").value,
+      rating: manRating, favorite: $("#manFav").checked, notes: $("#manNotes").value.trim() };
+    if(manPhoto) body.photo = manPhoto;
     $("#manSave").disabled = true;
     try {
       if(manEdit){

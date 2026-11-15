@@ -65,6 +65,32 @@ try {
   await page.click("#selAdd");
   await page.waitForSelector("#catBoard .tile-badge");
 
+  step("edit a food: macros, photo, rating, favourite, notes");
+  await page.click("#catBoard .tile");
+  await page.click("#selEdit");
+  assert.equal(await page.inputValue("#manName"), "Chicken breast");
+  assert.equal(await page.textContent("#manSave"), "Save changes");
+  await page.fill("#manKcal", "120");
+  await page.setInputFiles("#manPhoto", path.join(ROOT, "icons", "icon-192.png"));
+  await page.waitForSelector("#manPrev:not([hidden])");
+  await page.click("#manStars [data-star='4']");
+  await page.check("#manFav");
+  await page.fill("#manNotes", "Lean, buy on Mondays");
+  await page.click("#manSave");
+  await page.waitForSelector("#catBoard img.tile-img[src^='blob:']");
+  const ed = (await api(page, "/api/products")).items.find(i => i.name === "Chicken breast");
+  assert.equal(ed.per100.kcal, 120); assert.equal(ed.rating, 4); assert.equal(ed.favorite, true);
+  assert.equal(ed.notes, "Lean, buy on Mondays"); assert.equal(ed.img, true); assert.equal(ed.prices.length, 1);
+
+  step("favourite from the selection bar toggles");
+  await api(page, "/api/products/" + ed.id, { method: "PATCH", body: JSON.stringify({ favorite: false }) });
+  await page.reload(); await tab(page, "foods");
+  await page.click("#catBoard .tile");
+  assert.equal(await page.textContent("#selFav"), "♥ Favourite");
+  await page.click("#selFav");
+  await page.waitForFunction(() => document.querySelector("#selBar").hidden);
+  assert.equal((await api(page, "/api/products")).items.find(i => i.id === ed.id).favorite, true);
+
   step("recipe with a photo");
   await tab(page, "recipes");
   await page.click("#rnOpen");
@@ -100,7 +126,7 @@ try {
   const data = JSON.parse(fs.readFileSync(file, "utf8"));
   assert.equal(data.format, "macrocart");
   assert.equal(data.products.length, 3);
-  assert.equal(Object.keys(data.photos).length, 1);
+  assert.equal(Object.keys(data.photos).length, 2);
   assert.match(Object.values(data.photos)[0], /^data:image\/jpeg;base64,/);
 
   step("import 'replace' on a fresh device");
@@ -114,6 +140,7 @@ try {
   assert.equal(after.items.length, 3);
   assert.equal(after.items.find(i => i.name === "Lentil stew").img, true);
   assert.equal(after.items.find(i => i.name === "Chicken breast").prices[0].price, 4.2);
+  assert.equal(after.items.find(i => i.name === "Chicken breast").img, true);
   assert.equal((await api(p2, "/api/items")).length, 2);
 
   step("import 'merge' of the same file adds nothing");
