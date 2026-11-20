@@ -26,6 +26,12 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
+    // No encrypted dependency metadata block in the APK (app stores such as IzzyOnDroid flag it).
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+
     sourceSets.main.assets.srcDirs += webAssets
 
     // CI decodes the keystore secret to $MACROCART_KEYSTORE; without it the release build stays unsigned.

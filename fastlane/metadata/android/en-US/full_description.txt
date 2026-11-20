@@ -1,0 +1,20 @@
+<p>A <b>shopping list with a visual food board and your recipes</b> that runs entirely on your phone. Your foods are laid out as photo cards in three columns, <b>protein · carbs · fat</b>: tap the ones you need and send them to the list in one go.</p>
+<p><b>Features</b></p>
+<ul>
+<li><b>List</b>: photo cards, quantity −/+, tap to mark as bought, delete with undo, filter by shop, clear bought items and copy the list as plain text.</li>
+<li><b>Food board</b>: three columns (protein / carbs / fat); each product is placed automatically from its macros and can be moved by hand. Multi-select and "Add to list".</li>
+<li><b>Search the internet</b>: find products on Open Food Facts, optionally limited to one country.</li>
+<li><b>Scan</b>: read a barcode (EAN/UPC or GS1 QR code) with the camera, or type its number.</li>
+<li><b>New food</b>: add products that are not on Open Food Facts, with macros per 100 g.</li>
+<li><b>Recipes</b>: home-made or restaurant dishes with photo, nutrition per serving or per 100 g, rating, favourite and notes.</li>
+<li><b>Product card</b>: macros, 1-5 rating, favourite, notes and a price per shop with the cheapest one marked.</li>
+<li>Search, filter by shop or favourites, sort by rating, name, protein, kcal or price.</li>
+<li><b>Export / Import</b>: everything, photos included, in one JSON file to move it to another device or keep a backup (merge or replace).</li>
+</ul>
+<p><b>Privacy</b>: no account, no server, no ads, no telemetry. Everything is stored on your device.</p>
+<p><b>Permissions</b></p>
+<ul>
+<li><b>Camera</b>: only to scan barcodes and take food photos, when you ask for it.</li>
+<li><b>Internet</b>: only to search Open Food Facts and load its product images.</li>
+</ul>
+<p>Product data comes from <a href="https://world.openfoodfacts.org">Open Food Facts</a> (ODbL). Free software under the AGPL-3.0.</p>
