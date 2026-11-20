@@ -11,9 +11,11 @@ recipes, ratings, notes, prices, photos) is stored **on your device**: there is 
 server and no account. Export it to one file to move it to another device or keep
 a backup.
 
+[<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="54">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/gutiwayne/macrocart)
+
 **Install:** download `macrocart-vX.Y.Z.apk` from the
 [latest release](https://github.com/gutiwayne/macrocart/releases/latest) and open it
-on your Android phone (allow installing from your browser or file manager). The
+on your Android phone (allow installing from your browser or file manager), or add the repo to [Obtainium](https://obtainium.imranr.dev) to get updates automatically. The
 whole app is inside the APK: it does not load anything from GitHub or any server.
 
 A single static page with no build step and no external assets (the barcode
