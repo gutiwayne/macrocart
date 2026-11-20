@@ -1,0 +1,2 @@
+• Edit foods the same way as recipes, and mark favourites from the selection bar.
+• Smaller APK metadata for app stores.
