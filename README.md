@@ -22,6 +22,14 @@ whole app is inside the APK: it does not load anything from GitHub or any server
 A single static page with no build step and no external assets (the barcode
 reader is bundled in `web/vendor/`; the Android app uses a native ZXing scanner instead).
 
+<p>
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="180" alt="Screenshot 1">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="180" alt="Screenshot 2">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="180" alt="Screenshot 3">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" width="180" alt="Screenshot 4">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5.png" width="180" alt="Screenshot 5">
+</p>
+
 ## Features
 
 - 🛒 **List** — photo cards, quantity −/+, tap to mark as bought, delete with undo,
