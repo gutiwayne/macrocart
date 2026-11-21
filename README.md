@@ -24,7 +24,8 @@ reader is bundled in `web/vendor/`).
 ## Features
 
 - 🛒 **List** — photo cards, quantity −/+, tap to mark as bought, delete with undo,
-  filter by shop, "clear bought" and **copy the list** as plain text.
+  a shop dropdown that also filters (All, or only that shop's lines), "clear bought"
+  and **copy the list** as plain text.
 - 🥩🍚🥑 **Food board** — three columns (protein / carbs / fat), each product placed
   automatically from its macros and movable by hand. Multi-select and
   "Add to list"; an "In list" badge on what is already pending.
@@ -32,10 +33,10 @@ reader is bundled in `web/vendor/`).
   one country. Tap a result, pick its column, done.
 - 📷 **Scan** — read the barcode (EAN/UPC, or a GS1 QR code) with the camera, or
   type its number, and look it up on Open Food Facts.
-- ➕ **New food** — for products that are not on Open Food Facts: name, brand,
+- ➕ **New food** — for products that are not on Open Food Facts: name, shop,
   optional barcode and macros per 100 g. A scanned barcode that Open Food Facts
   does not know opens this form with the barcode filled in.
-- ✏️ **Edit and delete** — pick one food and "Edit" its name, brand, macros and
+- ✏️ **Edit and delete** — pick one food and "Edit" its name, shop, macros and
   column; "Delete" (with a confirmation) removes the picked foods with their
   ratings, notes and prices.
 - 🍲 **Recipes** — a third tab with the same three columns. "＋ New recipe": name,
@@ -45,8 +46,12 @@ reader is bundled in `web/vendor/`).
 - ⭐ **Product card** — macros, type (food or recipe), column, 1-5 rating,
   favourite, notes, and for foods a price per shop with the cheapest one marked.
 - 🔎 Search, filter by shop or favourites, sort by rating, name, protein, kcal or price.
+- 🏪 **Shops** — every shop field is a dropdown with your shops and "＋ Other…" to add
+  one (it is saved to Settings).
 - ⚙ **Settings** — your shops, the country and language for the internet search,
   and **Export / Import**.
+- 🌐 **English / Spanish** — the 🌐 button in the header switches the language; by
+  default it follows the device.
 - 🔒 No account, no server, no telemetry.
 
 ## Moving your data between devices

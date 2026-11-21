@@ -186,6 +186,23 @@ try {
   await page.waitForSelector(".lst-card .lst-name:text('Milk')");
   await ctx.setOffline(false);
 
+  step("language: Spanish and back; product names stay as they are");
+  await page.click("#langBtn");
+  await page.waitForFunction(() => document.documentElement.lang === "es");
+  assert.equal(await page.textContent("#langBtn"), "🌐 ES");
+  assert.match(await page.textContent('.tab-btn[data-tab="foods"]'), /Alimentos/);
+  assert.equal(await page.getAttribute("#name", "placeholder"), "Añade un producto…");
+  await page.waitForSelector(".lst-card .lst-name:text('Milk')");
+  await tab(page, "foods");
+  await page.waitForSelector("#catBoard .tile-name:text('Chicken breast')");
+  page.once("dialog", d => { assert.equal(d.message(), "Nombre del súper"); d.dismiss(); });
+  await page.click("#catBoard .tile-info");
+  await page.selectOption("#cmSup", "__other");
+  await page.click("#cmClose");
+  await page.click("#langBtn");
+  await page.waitForFunction(() => document.documentElement.lang === "en");
+  assert.match(await page.textContent('.tab-btn[data-tab="foods"]'), /Foods/);
+
   step("Open Food Facts search (network; a failure is only a warning)");
   try {
     const r = await api(page, "/api/off/search?q=tuna&page=1");
