@@ -30,7 +30,10 @@ jobs:
         run: |
           test -n "$KEYSTORE_BASE64" || { echo "::error::Missing secret SIGNING_KEYSTORE_BASE64"; exit 1; }
           export MACROCART_KEYSTORE="$RUNNER_TEMP/macrocart.p12"
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then export MACROCART_VERSION="${GITHUB_REF_NAME#v}"; fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            V=$(sed -n 's/^macrocartVersion=//p' gradle.properties)
+            [ "v$V" = "$GITHUB_REF_NAME" ] || { echo "::error::Tag $GITHUB_REF_NAME does not match macrocartVersion=$V"; exit 1; }
+          fi
           echo "$KEYSTORE_BASE64" | base64 -d > "$MACROCART_KEYSTORE"
           ./gradlew --no-daemon assembleRelease
           rm -f "$MACROCART_KEYSTORE"

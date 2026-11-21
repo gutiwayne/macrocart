@@ -3,8 +3,8 @@ plugins {
 }
 
 // The app is the web page in ../web, copied into the APK's assets at build time.
-// Version: MACROCART_VERSION (the release tag without "v", e.g. 2.1.0), default below.
-def appVersion = (System.getenv("MACROCART_VERSION") ?: "2.0.0").replaceFirst(/^v/, "")
+// Version: macrocartVersion in android/gradle.properties (the release tag without "v", e.g. 2.1.0).
+def appVersion = project.property("macrocartVersion").toString()
 def parts = (appVersion.tokenize(".-") + ["0", "0", "0"]).take(3).collect { it.isInteger() ? it as int : 0 }
 def keystore = System.getenv("MACROCART_KEYSTORE")
 def webAssets = layout.buildDirectory.dir("webassets").get().asFile

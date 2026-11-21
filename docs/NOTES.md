@@ -108,7 +108,8 @@ are dropped. All paths are relative, so the app works under a sub-path such as
 - Export: a WebView cannot download `blob:` URLs, so the page calls
   `window.MacrocartAndroid.saveFile(name, text)`, which opens the system
   "save as" dialog (`ACTION_CREATE_DOCUMENT`). Import uses the normal file input.
-- Version from the tag (`MACROCART_VERSION`): `versionCode = major*10000 + minor*100 + patch`.
+- Version: `macrocartVersion` in `android/gradle.properties`, bumped before tagging `v<version>`
+  (the release workflow fails if they differ): `versionCode = major*10000 + minor*100 + patch`.
 - Signing: PKCS12 key, alias `macrocart`, from the repository secrets
   `SIGNING_KEYSTORE_BASE64` / `SIGNING_PASSWORD`. Keep the key: an APK signed with
   another key cannot update the installed app.
