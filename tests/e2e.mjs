@@ -45,7 +45,10 @@ try {
   await tab(page, "foods");
   await page.click("#manOpen");
   await page.fill("#manName", "Chicken breast");
-  await page.fill("#manBrand", "Butcher");
+  // Shop is a dropdown; "＋ Other…" asks for a new one and keeps it in Settings.
+  page.once("dialog", d => d.accept("Butcher"));
+  await page.selectOption("#manBrand", "__other");
+  assert.equal(await page.inputValue("#manBrand"), "Butcher");
   await page.fill("#manCode", "1234567890123");
   await page.fill("#manKcal", "110"); await page.fill("#manP", "23,5"); await page.fill("#manC", "0"); await page.fill("#manF", "1.5");
   await page.click("#manSave");
@@ -57,16 +60,35 @@ try {
 
   step("price and send to the list");
   await page.click("#catBoard .tile-info");
-  await page.fill("#cmSup", "Market"); await page.fill("#cmPrice", "4.2");
+  page.once("dialog", d => d.accept("Market"));
+  await page.selectOption("#cmSup", "__other");
+  assert.equal(await page.inputValue("#cmSup"), "Market");
+  await page.fill("#cmPrice", "4.2");
   await page.click("#cmAddPrice");
   await page.waitForSelector("#cmPrices .cm-price");
   await page.click("#cmClose");
   await page.click("#catBoard .tile");
   await page.click("#selAdd");
   await page.waitForSelector("#catBoard .tile-badge");
+  await page.waitForFunction(() => document.querySelector("#selBar").hidden);
+  assert.ok((await api(page, "/api/settings")).supermarkets.includes("Butcher"));
+
+  step("list: the shop dropdown filters (All = everything, a shop = only its lines)");
+  await tab(page, "list");
+  await page.waitForSelector("#lstSuper option[value='Market']");
+  assert.equal(await page.inputValue("#lstSuper"), "");
+  assert.equal(await page.locator(".lst-card").count(), 2);
+  await page.selectOption("#lstSuper", "Market");
+  assert.deepEqual(await page.locator(".lst-card .lst-name").allTextContents(), ["Chicken breast"]);
+  await page.selectOption("#lstSuper", "Butcher");
+  assert.equal(await page.locator(".lst-card").count(), 0);
+  await page.selectOption("#lstSuper", "");
+  assert.equal(await page.locator(".lst-card").count(), 2);
+  await tab(page, "foods");
 
   step("edit a food: macros, photo, rating, favourite, notes");
   await page.click("#catBoard .tile");
+  assert.equal(await page.locator("#selClear").count(), 0);
   await page.click("#selEdit");
   assert.equal(await page.inputValue("#manName"), "Chicken breast");
   assert.equal(await page.textContent("#manSave"), "Save changes");

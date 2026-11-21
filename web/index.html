@@ -134,7 +134,8 @@
   .stars .off { color: var(--border); }
   .price-badge { background: var(--tag-bg); color: var(--tag-fg); border-radius: 999px; padding: 1px 7px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .sel-bar { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 55; display: flex; align-items: center; gap: 10px;
-    width: min(560px, calc(100% - 24px)); padding: 10px 10px 10px 16px; border-radius: 16px;
+    width: max-content; min-width: min(560px, calc(100% - 24px)); max-width: calc(100% - 24px); flex-wrap: wrap;
+    box-sizing: border-box; padding: 10px 10px 10px 16px; border-radius: 16px;
     background: var(--surface-solid); border: 1px solid var(--border); box-shadow: var(--shadow-md); }
   .sel-bar[hidden] { display: none; }
   .sel-bar span { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -240,8 +241,7 @@
     <form class="lst-add" id="composer" autocomplete="off">
       <input type="text" id="name" list="lstSuggest" placeholder="Add a product…" required maxlength="120" aria-label="Product">
       <datalist id="lstSuggest"></datalist>
-      <input type="text" id="lstSuper" list="lstSuperList" placeholder="Shop" maxlength="40" aria-label="Supermarket">
-      <datalist id="lstSuperList"></datalist>
+      <select id="lstSuper" aria-label="Shop"></select>
       <button class="btn" type="submit">Add</button>
     </form>
     <div class="lst-filters" id="lstFilters" hidden></div>
@@ -275,7 +275,6 @@
     <div class="board" id="catBoard"></div>
     <div class="sel-bar" id="selBar" hidden>
       <span id="selCount"></span>
-      <button class="btn ghost" type="button" id="selClear">Clear</button>
       <button class="btn ghost" type="button" id="selDel">Delete</button>
       <button class="btn ghost" type="button" id="selFav">♥ Favourite</button>
       <button class="btn ghost" type="button" id="selEdit" hidden>Edit</button>
@@ -344,8 +343,8 @@
     <p class="sub">For products that are not on Open Food Facts. Macros per 100 g (or ml).</p>
     <label class="cm-lbl" for="manName">Name</label>
     <input type="text" id="manName" class="cm-input" maxlength="120" required>
-    <label class="cm-lbl" for="manBrand">Brand</label>
-    <input type="text" id="manBrand" class="cm-input" maxlength="80">
+    <label class="cm-lbl" for="manBrand">Shop</label>
+    <select id="manBrand" class="cm-input"></select>
     <label class="cm-lbl" for="manCode">Barcode (optional)</label>
     <input type="text" id="manCode" class="cm-input" inputmode="numeric" pattern="[0-9]{4,20}" maxlength="20">
     <label class="cm-lbl" for="manPhoto">Photo (optional)</label>
@@ -448,8 +447,7 @@
     <span class="cm-lbl">Prices per shop</span>
     <div id="cmPrices"></div>
     <div class="field-row">
-      <input type="text" id="cmSup" list="cmSupList" placeholder="Shop…" maxlength="40">
-      <datalist id="cmSupList"></datalist>
+      <select id="cmSup" aria-label="Shop"></select>
       <input type="number" id="cmPrice" inputmode="decimal" step="0.01" min="0" max="9999.99" placeholder="Price">
       <button class="btn" type="button" id="cmAddPrice">Save</button>
     </div>
@@ -525,6 +523,34 @@ function toast(msg, action){
   toastTimer = setTimeout(() => el.classList.remove("show"), duration);
 }
 
+/* Shop dropdown (List, food card, food form): the shops in Settings plus the ones in use,
+   and "＋ Other…", which asks for a name and saves it to Settings. */
+const SHOP_OTHER = "__other";
+function shopOptions(sel, names, empty){
+  const keep = sel.value, seen = new Map();
+  (names || []).forEach(s => { const k = String(s || "").trim(); if(k && !seen.has(k.toLowerCase())) seen.set(k.toLowerCase(), k); });
+  if(keep && keep !== SHOP_OTHER && !seen.has(keep.toLowerCase())) seen.set(keep.toLowerCase(), keep);
+  sel.replaceChildren(new Option(empty, ""), ...[...seen.values()].map(s => new Option(s, s)), new Option("＋ Other…", SHOP_OTHER));
+  sel.value = keep && keep !== SHOP_OTHER ? (seen.get(keep.toLowerCase()) || "") : "";
+  sel.dataset.prev = sel.value;
+}
+function shopBind(sel){
+  sel.addEventListener("change", async () => {
+    if(sel.value !== SHOP_OTHER){ sel.dataset.prev = sel.value; return; }
+    const n = (prompt("Shop name") || "").trim().slice(0, 40);
+    if(!n){ sel.value = sel.dataset.prev || ""; sel.dispatchEvent(new Event("change")); return; }
+    let o = [...sel.options].find(o => o.value.toLowerCase() === n.toLowerCase());
+    if(!o){ o = new Option(n, n); sel.insertBefore(o, sel.lastElementChild); }
+    sel.value = o.value; sel.dataset.prev = o.value;
+    sel.dispatchEvent(new Event("change"));
+    try {
+      const st = await api("/api/settings");
+      if(!st.supermarkets.some(s => s.toLowerCase() === n.toLowerCase()))
+        await api("/api/settings", { method: "PUT", body: JSON.stringify({ supermarkets: st.supermarkets.concat(o.value) }) });
+    } catch(e){}
+  });
+}
+
 </script>
 
 <script>
@@ -534,6 +560,7 @@ function toast(msg, action){
 (() => {
   let items = [];
   let filterSuper = "";
+  let knownShops = [];
 
   async function reload(){
     try { items = await api("/api/items"); } catch(e){ toast("Could not load the list"); return; }
@@ -562,10 +589,10 @@ function toast(msg, action){
 
   function render(){
     const supers = [...new Set(items.map(i => i.supermarket).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-    if(filterSuper && !supers.includes(filterSuper)) filterSuper = "";
+    shopOptions($("#lstSuper"), knownShops.concat(supers), "All");
     const fbox = $("#lstFilters");
-    fbox.hidden = supers.length < 2;
-    fbox.innerHTML = supers.length < 2 ? "" :
+    fbox.hidden = !supers.length;
+    fbox.innerHTML = !supers.length ? "" :
       ['<button type="button" class="chip' + (filterSuper ? "" : " is-active") + '" data-super="">All</button>']
       .concat(supers.map(s => '<button type="button" class="chip' + (filterSuper === s ? " is-active" : "") +
         '" data-super="' + esc(s) + '">' + esc(s) + "</button>")).join("");
@@ -622,14 +649,20 @@ function toast(msg, action){
 
   $("#lstFilters").addEventListener("click", (e) => {
     const b = e.target.closest("[data-super]"); if(!b) return;
-    filterSuper = b.dataset.super; render();
+    filterSuper = b.dataset.super; $("#lstSuper").value = filterSuper; render();
+  });
+
+  shopBind($("#lstSuper"));
+  $("#lstSuper").addEventListener("change", (e) => {
+    if(e.target.value === SHOP_OTHER) return;
+    filterSuper = e.target.value; render();
   });
 
   $("#composer").addEventListener("submit", async (e) => {
     e.preventDefault();
     const nameEl = $("#name"), name = nameEl.value.trim();
     if(!name) return;
-    const supermarket = $("#lstSuper").value.trim();
+    const supermarket = $("#lstSuper").value === SHOP_OTHER ? "" : $("#lstSuper").value;
     // Already pending at the same shop → +1 instead of a duplicate line.
     const same = items.find(i => !i.checked && i.name.toLowerCase() === name.toLowerCase() && i.supermarket === supermarket);
     try {
@@ -682,11 +715,11 @@ function toast(msg, action){
       const d = await api("/api/products");
       $("#lstSuggest").innerHTML = d.items.filter(i => !i.hidden)
         .map(i => '<option value="' + esc(i.name.trim()) + '">').join("");
-      $("#lstSuperList").innerHTML = d.supermarkets.map(s => '<option value="' + esc(s) + '">').join("");
+      knownShops = d.supermarkets; render();
     } catch(e){}
   }
 
-  window.addEventListener("macrocart:refresh", reload);
+  window.addEventListener("macrocart:refresh", () => { reload(); loadSuggest(); });
   reload();
   loadSuggest();
 })();
@@ -844,7 +877,7 @@ function toast(msg, action){
     sel.innerHTML = '<option value="">All shops</option>' +
       supers.map(s => '<option value="' + esc(s) + '">' + esc(s) + "</option>").join("");
     sel.value = supers.includes(keep) ? keep : "";
-    $("#cmSupList").innerHTML = supers.map(s => '<option value="' + esc(s) + '">').join("");
+    shopOptions($("#cmSup"), supers, "Shop…");
     render();
     if(current){ const it = items.find(i => i.id === current.id); if(it){ current = it; renderModal(); } }
   }
@@ -933,7 +966,6 @@ function toast(msg, action){
     if(t && e.target === t){ e.preventDefault(); toggle(Number(t.dataset.id)); }
   });
   $("#selAdd").addEventListener("click", addSelected);
-  $("#selClear").addEventListener("click", () => { selected.clear(); render(); });
   // ♥: marks the picked foods as favourites; if they all already are, unmarks them.
   $("#selFav").addEventListener("click", async () => {
     const pick = items.filter(i => selected.has(i.id)); if(!pick.length) return;
@@ -1027,6 +1059,7 @@ function toast(msg, action){
     patch({ rating: n === current.rating ? 0 : n });   // tapping the same star clears it
   });
   $("#cmNotes").addEventListener("change", (e) => patch({ notes: e.target.value }));
+  shopBind($("#cmSup"));
   $("#cmAddPrice").addEventListener("click", async () => {
     if(!current) return;
     const body = { supermarket: $("#cmSup").value.trim(), price: $("#cmPrice").value };
@@ -1234,6 +1267,7 @@ function toast(msg, action){
       '<button type="button" data-star="' + n + '" class="' + (n <= manRating ? "on" : "") +
       '" aria-label="' + n + ' stars">★</button>').join("");
   }
+  shopBind($("#manBrand"));
   function openManual(pre = {}, it = null){
     $("#manForm").reset();
     manEdit = it; manRating = it ? it.rating : 0; manPhoto = ""; manStars();
@@ -1243,8 +1277,9 @@ function toast(msg, action){
     $("#manCode").disabled = !!it;   // the barcode cannot be changed
     $("#manName").value = it ? it.name : pre.name || "";
     $("#manCode").value = pre.code || "";
+    shopOptions($("#manBrand"), it && it.brand ? supers.concat(it.brand) : supers, "—");
+    $("#manBrand").value = it ? it.brand : "";
     if(it){
-      $("#manBrand").value = it.brand;
       $("#manKcal").value = it.per100.kcal; $("#manP").value = it.per100.p;
       $("#manC").value = it.per100.c; $("#manF").value = it.per100.f;
       $("#manCat").value = it.manual_category;

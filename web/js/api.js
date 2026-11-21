@@ -136,16 +136,28 @@
     checked: !!r.checked, created_at: r.created_at });
 
   async function listItems(){
-    const [rows, prods] = await run(["items", "products"], "readonly", (s) =>
-      Promise.all([req(s("items").getAll()), req(s("products").getAll())]));
+    const [rows, prods, prices] = await run(["items", "products", "prices"], "readonly", (s) =>
+      Promise.all([req(s("items").getAll()), req(s("products").getAll()), req(s("prices").getAll())]));
     const srcs = await imgSrcs(prods);
     // Photo: the product with the same name (case-insensitive), whether the line came
     // from the Foods tab or was typed by hand.
     const idx = new Map();
     for(const p of prods){ const k = txt(p.name, NAME_MAX).toLowerCase(); if(srcs.has(p.id) && !idx.has(k)) idx.set(k, srcs.get(p.id)); }
+    // Shop for a line that has none: the product's cheapest price, or its shop (the "brand"
+    // field, when it names a known shop), so the List can be filtered by shop.
+    const known = new Map((await getSettings()).supermarkets.map(s => [s.toLowerCase(), s]));
+    prices.forEach(p => { if(!known.has(p.supermarket.toLowerCase())) known.set(p.supermarket.toLowerCase(), p.supermarket); });
+    const cheap = new Map();
+    prices.sort((a, b) => a.price - b.price).forEach(p => { if(!cheap.has(p.product_id)) cheap.set(p.product_id, p.supermarket); });
+    const shop = new Map();
+    for(const p of prods){
+      const k = txt(p.name, NAME_MAX).toLowerCase(), sup = cheap.get(p.id) || known.get(String(p.brand || "").trim().toLowerCase());
+      if(sup && !shop.has(k)) shop.set(k, sup);
+    }
     return rows.sort((a, b) => a.created_at - b.created_at).map(r => {
       const it = itemOut(r);
       it.img_src = idx.get(it.name.trim().toLowerCase()) || "";
+      if(!it.supermarket) it.supermarket = shop.get(it.name.trim().toLowerCase()) || "";
       return it;
     });
   }
