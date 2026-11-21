@@ -1,0 +1,2 @@
+• Android: barcodes are read by a native ZXing scanner screen, on any phone.
+• The app no longer bundles the WebAssembly barcode reader.

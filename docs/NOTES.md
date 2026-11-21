@@ -87,6 +87,12 @@ Android, macOS, ChromeOS); otherwise it loads the bundled ZXing ponyfill from
 the library's CDN default. The ponyfill checks the wasm's SHA-256. A QR code is
 accepted when it is a GS1 Digital Link (`…/01/<GTIN>…`).
 
+In the Android app the page calls `MacrocartAndroid.scanBarcode()`, which opens
+ZXing's `CaptureActivity` ([zxing-android-embedded](https://github.com/journeyapps/zxing-android-embedded));
+the result comes back through `window.macrocartScanned(code|null)`. `web/vendor/`
+is left out of the APK (`copyWeb` excludes it), so the app carries no prebuilt
+binaries (F-Droid builds it from source).
+
 ## Offline and updates in a browser (`web/sw.js`)
 
 The service worker precaches the shell (page, scripts, icons, scanner) and serves
