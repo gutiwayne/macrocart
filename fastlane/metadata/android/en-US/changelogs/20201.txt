@@ -1,0 +1,1 @@
+• Built with JDK 21, so F-Droid can reproduce the APK exactly.
