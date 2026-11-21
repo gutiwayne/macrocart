@@ -1,0 +1,5 @@
+• Shops are dropdowns everywhere (List, food card, food form), with "＋ Other…" to add one.
+• List: pick a shop to see only its lines ("All" shows everything).
+• English / Spanish: 🌐 button in the header (follows the device by default).
+• Selection bar no longer overflows; "Clear" is gone (tap a tile again to unpick).
+• Android build on Gradle 9.
