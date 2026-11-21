@@ -75,7 +75,7 @@ try {
 
   step("list: the shop dropdown filters (All = everything, a shop = only its lines)");
   await tab(page, "list");
-  await page.waitForSelector("#lstSuper option[value='Market']");
+  await page.waitForSelector("#lstSuper option[value='Market']", { state: "attached" });
   assert.equal(await page.inputValue("#lstSuper"), "");
   assert.equal(await page.locator(".lst-card").count(), 2);
   await page.selectOption("#lstSuper", "Market");
