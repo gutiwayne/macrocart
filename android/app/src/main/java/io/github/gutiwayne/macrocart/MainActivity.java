@@ -29,6 +29,11 @@ import android.window.OnBackInvokedDispatcher;
 
 import androidx.webkit.WebViewAssetLoader;
 
+import com.google.zxing.integration.android.IntentIntegrator;
+import com.google.zxing.integration.android.IntentResult;
+
+import org.json.JSONObject;
+
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
@@ -110,8 +115,20 @@ public class MainActivity extends Activity {
         if (state == null || web.getUrl() == null) web.loadUrl(HOME);
     }
 
-    /** Called from the page: window.MacrocartAndroid.saveFile(name, text) for "Export data". */
+    /** Called from the page: window.MacrocartAndroid.saveFile(name, text) for "Export data",
+     *  window.MacrocartAndroid.scanBarcode() for "Scan" (answers with window.macrocartScanned(code|null)). */
     private class Bridge {
+        @JavascriptInterface
+        public void scanBarcode() {
+            runOnUiThread(() -> new IntentIntegrator(MainActivity.this)
+                .setDesiredBarcodeFormats(IntentIntegrator.EAN_13, IntentIntegrator.EAN_8, IntentIntegrator.UPC_A,
+                    IntentIntegrator.UPC_E, IntentIntegrator.QR_CODE)
+                .setPrompt("Point the camera at the barcode")
+                .setBeepEnabled(false)
+                .setOrientationLocked(true)
+                .initiateScan());
+        }
+
         @JavascriptInterface
         public void saveFile(String name, String text) {
             runOnUiThread(() -> {
@@ -162,6 +179,13 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        IntentResult scan = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
+        if (scan != null) {
+            String code = scan.getContents();
+            web.evaluateJavascript("window.macrocartScanned && window.macrocartScanned("
+                + (code == null ? "null" : JSONObject.quote(code)) + ")", null);
+            return;
+        }
         if (requestCode == FILE_REQUEST && fileCallback != null) {
             fileCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data));
             fileCallback = null;

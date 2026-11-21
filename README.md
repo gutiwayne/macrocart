@@ -20,7 +20,7 @@ on your Android phone (allow installing from your browser or file manager), or a
 whole app is inside the APK: it does not load anything from GitHub or any server.
 
 A single static page with no build step and no external assets (the barcode
-reader is bundled in `web/vendor/`).
+reader is bundled in `web/vendor/`; the Android app uses a native ZXing scanner instead).
 
 ## Features
 
@@ -76,8 +76,8 @@ it is not evicted when space runs low.
 Your data never leaves the device unless you export it. The only network traffic
 is to Open Food Facts, from your browser, when you search, look up a barcode or add
 a product (`world.openfoodfacts.org`), and product photos loaded from
-`images.openfoodfacts.org`. The scanner reads the camera in the page; no image is
-sent anywhere. Recipe photos are shrunk in the browser (1200 px, JPEG) and stored
+`images.openfoodfacts.org`. The scanner reads the camera on the device (in the page,
+or in the app's ZXing screen); no image is sent anywhere. Recipe photos are shrunk in the browser (1200 px, JPEG) and stored
 on the device.
 
 The internet search uses Open Food Facts' public search, which allows about
@@ -93,7 +93,8 @@ A product with no macros goes to carbs. The card lets you override it.
 
 `android/` is a WebView that serves `web/` from the APK's assets at
 `https://appassets.androidplatform.net` (a secure origin, so the camera and storage
-work). It asks for the camera only when you scan. "Export data" opens Android's
+work). Scanning opens a native ZXing camera screen (no Google Play Services needed),
+which asks for the camera the first time. "Export data" opens Android's
 "save as" dialog. Data lives in the app's own storage: uninstalling deletes it, so
 export first.
 

@@ -2,7 +2,9 @@
 
 macrocart's own code is licensed under the AGPL-3.0 (see [`LICENSE`](LICENSE)).
 This repository bundles only the barcode reader below (no third-party fonts or
-images).
+images). The Android app does not include it: it scans with
+[zxing-android-embedded](https://github.com/journeyapps/zxing-android-embedded) 4.3.0 and
+[ZXing](https://github.com/zxing/zxing) core 3.4.1 (Apache-2.0), fetched by Gradle from Maven Central.
 
 ## Barcode reader (bundled in `web/vendor/`)
 

@@ -1158,7 +1158,8 @@ function shopBind(sel){
   });
 
   /* Barcode scanner: the browser's own BarcodeDetector when it reads EAN-13,
-     otherwise the bundled ZXing WebAssembly ponyfill (vendor/), loaded on first use. */
+     otherwise the bundled ZXing WebAssembly ponyfill (vendor/), loaded on first use.
+     The Android app uses its native ZXing scanner instead (nativeScan below). */
   const SCAN_FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "qr_code"];
   let detectorP = null, scanStream = null, scanTimer = null;
   function loadScript(src){
@@ -1196,10 +1197,24 @@ function shopBind(sel){
     $("#scanVideo").srcObject = null;
   }
   function scanClose(){ scanStop(); $("#scanBack").hidden = true; }
+  /* In the Android app the scan runs in a native ZXing screen; it answers through macrocartScanned. */
+  const nativeScan = !!(window.MacrocartAndroid && window.MacrocartAndroid.scanBarcode);
+  window.macrocartScanned = (raw) => {
+    if($("#scanBack").hidden) return;
+    if(raw == null){ $("#scanHint").textContent = "Scan cancelled. Type the barcode instead."; return; }
+    const code = toBarcode(raw);
+    if(code) lookup(code);
+    else $("#scanHint").textContent = "That code is not a product barcode.";
+  };
   async function scanOpen(){
     const v = $("#scanVideo"), hint = $("#scanHint");
     $("#scanCode").value = "";
     $("#scanBack").hidden = false;
+    if(nativeScan){
+      v.hidden = true; hint.textContent = "Opening the scanner…";
+      window.MacrocartAndroid.scanBarcode();
+      return;
+    }
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
       v.hidden = true; hint.textContent = "The camera only works over HTTPS. Type the barcode instead."; return;
     }
