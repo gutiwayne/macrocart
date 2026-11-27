@@ -33,6 +33,15 @@ async function newPage(ctx){
 const step = (s) => console.log("•", s);
 const api = (page, p, opts) => page.evaluate(([p, o]) => window.api(p, o), [p, opts || {}]);
 const tab = (page, name) => page.click(`.tab-btn[data-tab="${name}"]`);
+// page.waitForFunction re-evaluates its predicate as a string, which the page's CSP
+// (no 'unsafe-eval') refuses; poll with page.evaluate instead.
+async function until(page, fn, timeout = 10000){
+  const end = Date.now() + timeout;
+  while(!(await page.evaluate(fn))){
+    if(Date.now() > end) throw new Error("timed out waiting for " + fn);
+    await new Promise(r => setTimeout(r, 100));
+  }
+}
 
 try {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true });
@@ -72,7 +81,7 @@ try {
   await page.click("#catBoard .tile");
   await page.click("#selAdd");
   await page.waitForSelector("#catBoard .tile-badge");
-  await page.waitForFunction(() => document.querySelector("#selBar").hidden);
+  await until(page, () => document.querySelector("#selBar").hidden);
   assert.ok((await api(page, "/api/settings")).supermarkets.includes("Butcher"));
 
   step("list: the shop dropdown filters (All = everything, a shop = only its lines)");
@@ -112,7 +121,7 @@ try {
   await page.click("#catBoard .tile");
   assert.equal(await page.textContent("#selFav"), "♥ Favourite");
   await page.click("#selFav");
-  await page.waitForFunction(() => document.querySelector("#selBar").hidden);
+  await until(page, () => document.querySelector("#selBar").hidden);
   assert.equal((await api(page, "/api/products")).items.find(i => i.id === ed.id).favorite, true);
 
   step("recipe with a photo");
@@ -218,7 +227,7 @@ try {
   step("works offline once loaded");
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => true));
   await page.reload();
-  await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+  await until(page, () => !!navigator.serviceWorker.controller);
   await ctx.setOffline(true);
   await page.reload();
   await tab(page, "list");
@@ -227,7 +236,7 @@ try {
 
   step("language: Spanish and back; product names stay as they are");
   await page.click("#langBtn");
-  await page.waitForFunction(() => document.documentElement.lang === "es");
+  await until(page, () => document.documentElement.lang === "es");
   assert.equal(await page.textContent("#langBtn"), "🌐 ES");
   assert.match(await page.textContent('.tab-btn[data-tab="foods"]'), /Alimentos/);
   assert.equal(await page.getAttribute("#name", "placeholder"), "Añade un producto…");
@@ -239,7 +248,7 @@ try {
   await page.selectOption("#cmSup", "__other");
   await page.click("#cmClose");
   await page.click("#langBtn");
-  await page.waitForFunction(() => document.documentElement.lang === "en");
+  await until(page, () => document.documentElement.lang === "en");
   assert.match(await page.textContent('.tab-btn[data-tab="foods"]'), /Foods/);
 
   step("Open Food Facts search (network; a failure is only a warning)");
