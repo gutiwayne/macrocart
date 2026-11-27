@@ -65,4 +65,11 @@ jobs:
 
       - name: Build
         working-directory: android
-        run: ./gradlew --no-daemon assembleRelease lintRelease
+        run: ./gradlew --no-daemon assembleRelease lintRelease assembleDebug
+
+      # Debug-signed, so it installs on a real device for manual tests (adb).
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macrocart-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 7
