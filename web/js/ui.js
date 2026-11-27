@@ -31,7 +31,8 @@ function shopOptions(sel, names, empty){
   const keep = sel.value, seen = new Map();
   (names || []).forEach(s => { const k = String(s || "").trim(); if(k && !seen.has(k.toLowerCase())) seen.set(k.toLowerCase(), k); });
   if(keep && keep !== SHOP_OTHER && !seen.has(keep.toLowerCase())) seen.set(keep.toLowerCase(), keep);
-  sel.replaceChildren(new Option(empty, ""), ...[...seen.values()].map(s => new Option(s, s)), new Option("＋ Other…", SHOP_OTHER));
+  sel.textContent = "";   // not replaceChildren(): Chrome/WebView 86+ only
+  [new Option(empty, ""), ...[...seen.values()].map(s => new Option(s, s)), new Option("＋ Other…", SHOP_OTHER)].forEach(o => sel.add(o));
   sel.value = keep && keep !== SHOP_OTHER ? (seen.get(keep.toLowerCase()) || "") : "";
   sel.dataset.prev = sel.value;
 }
