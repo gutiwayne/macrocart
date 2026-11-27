@@ -1,0 +1,3 @@
+• Works on phones with an old WebView (tested on Android 9): the list shows again, import works and Spanish translates everything.
+• Safer import: files over 64 MB, files that do not fit on the device and files with too many records are refused before anything is written.
+• Stricter page security (Content-Security-Policy).
