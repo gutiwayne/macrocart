@@ -6,6 +6,11 @@
   const NAME_MAX = 120, SUPERMARKET_MAX = 40, NOTES_MAX = 500, BRAND_MAX = 80;
   const QTY_MAX = 999, PRICE_MAX = 9999.99, TO_LIST_MAX = 200;
   const PHOTO_MAX = 3 * 1024 * 1024;
+  // Import caps: far above any real shopping list, low enough that a wrong or hostile
+  // file cannot exhaust a low-end phone's memory or storage.
+  const IMPORT_MAX_BYTES = 64 * 1024 * 1024;
+  const IMPORT_MAX = { items: 5000, products: 20000, prices: 100000, photos: 5000 };
+  const IMPORT_LABEL = { items: "list lines", products: "foods and recipes", prices: "prices", photos: "photos" };
   const CATEGORIES = ["protein", "carbs", "fat"], KINDS = ["product", "recipe"];
   const RECIPE_COPY = "recipe-";
   const CODE_RE = /^\d{4,20}$/;
@@ -505,6 +510,10 @@
   function parseExport(d){
     if(!d || d.format !== FORMAT) fail(400, "This is not a macrocart export");
     if(d.version !== FORMAT_VERSION) fail(400, "This export comes from a newer macrocart: update the app first");
+    for(const [k, max] of Object.entries(IMPORT_MAX)){
+      const v = d[k], n = Array.isArray(v) ? v.length : v && typeof v === "object" ? Object.keys(v).length : 0;
+      if(n > max) fail(413, "This file has too many " + IMPORT_LABEL[k] + " to import (" + n + "; the limit is " + max + ")");
+    }
     const items = (Array.isArray(d.items) ? d.items : []).map(i => ({
       id: txt(i.id, 32) || hex(12), name: txt(i.name, NAME_MAX), supermarket: txt(i.supermarket, SUPERMARKET_MAX),
       qty: clampQty(i.qty), checked: !!i.checked, created_at: Number(i.created_at) || now() })).filter(i => i.name);
@@ -634,5 +643,18 @@
   }
 
   window.api = api;
-  window.macrocart = { offImg, exportAll, importAll, getSettings, putSettings };
+  /* Can this device store an import of `bytes`? Best effort: when the browser gives no
+     estimate the import is tried and IndexedDB reports a full disk itself. */
+  async function importRoom(bytes){
+    if(bytes > IMPORT_MAX_BYTES) return { ok: false, reason: "too big" };
+    try {
+      if(navigator.storage && navigator.storage.estimate){
+        const { quota, usage } = await navigator.storage.estimate();
+        if(Number.isFinite(quota) && Number.isFinite(usage) && quota - usage < bytes) return { ok: false, reason: "no space" };
+      }
+    } catch(e){}
+    return { ok: true };
+  }
+
+  window.macrocart = { offImg, exportAll, importAll, importRoom, getSettings, putSettings, IMPORT_MAX_BYTES };
 })();

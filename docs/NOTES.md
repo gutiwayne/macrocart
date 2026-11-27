@@ -126,3 +126,24 @@ One static `web/index.html`; the List tab and the Foods/Recipes tabs keep separa
 state in separate `<script>` blocks; the board tells the list to reload with a
 `macrocart:refresh` event. Deletions and import go through in-page dialogs, not
 `window.confirm()`, which some WebViews do not show.
+
+## Content-Security-Policy
+
+`index.html` carries a CSP in a `<meta>` tag: scripts only from the app itself
+(`script-src 'self'`, plus `'wasm-unsafe-eval'` for the browser barcode reader),
+network only to Open Food Facts, images from anywhere over HTTPS (product photos).
+Names and notes from Open Food Facts or an imported file are escaped before they
+reach `innerHTML`; the CSP is the second line in case one is ever missed, since the
+page also exposes the Android bridge. **Do not add inline `<script>` blocks or
+`on…=` attributes**: they would be blocked. Page code lives in `web/js/`, loaded in
+order (classic scripts sharing one global scope). Inline `style` stays allowed.
+The e2e test fails on any CSP violation in the console.
+
+## Import limits
+
+An import is refused, before anything is written, when the file is over 64 MB,
+when the browser's storage estimate says it does not fit, or when it has more than
+5 000 list lines, 20 000 foods and recipes, 100 000 prices or 5 000 photos. The
+caps are far above real use and exist so a wrong or hostile file cannot exhaust a
+low-end phone. A replace or merge runs in one IndexedDB transaction, so an
+interrupted import leaves the data as it was.
