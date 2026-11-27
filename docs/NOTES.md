@@ -153,4 +153,4 @@ interrupted import leaves the data as it was.
 `minSdk 24` means phones whose WebView was never updated (Chrome 74 on a stock
 Android 9 tablet was tested). Page code avoids APIs newer than that: no
 `replaceChildren()` (86), no `Blob.text()` (76, use `FileReader`), no `?.`/`??` (80),
-no `replaceAll()` (85), no `.at()` (92).
+no `replaceAll()` (85), no `.at()` (92), no `:is()`/`:where()` in selectors (88).
