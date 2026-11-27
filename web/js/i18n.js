@@ -142,7 +142,10 @@
     return s;
   }
   // Product, brand and shop names are not translated.
-  const SKIP = ".tile-name, .tile-brand, .lst-name, .lst-super, #cmName, #cmBrand, #recSelName, .cm-price .s, script, style, textarea, :is(#lstSuper, #cmSup, #manBrand, #catSuper) option:not([value='']):not([value='__other'])";
+  // No :is() here: Chrome/WebView 88+ only, and closest() throws on it in older engines.
+  const SHOP_OPT = "option:not([value='']):not([value='__other'])";
+  const SKIP = ".tile-name, .tile-brand, .lst-name, .lst-super, #cmName, #cmBrand, #recSelName, .cm-price .s, script, style, textarea, " +
+    ["#lstSuper", "#cmSup", "#manBrand", "#catSuper"].map(id => id + " " + SHOP_OPT).join(", ");
   function text(node){
     const raw = node.nodeValue, s = raw.trim();
     if(!s || !/[A-Za-z]/.test(s)) return;
