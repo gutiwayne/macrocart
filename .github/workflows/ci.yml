@@ -19,13 +19,17 @@ jobs:
       - name: Scripts and inline blocks
         run: |
           for f in web/js/*.js web/sw.js tests/*.mjs; do node --check "$f"; echo "$f ok"; done
+          # The CSP blocks inline scripts and handlers: page code belongs in web/js/.
           python3 - <<'PY'
-          import re, pathlib
+          import re, pathlib, sys
           html = pathlib.Path("web/index.html").read_text(encoding="utf-8")
-          for n, js in enumerate(re.findall(r"<script>(.*?)</script>", html, re.S)):
-              pathlib.Path(f"/tmp/block{n}.js").write_text(js, encoding="utf-8")
+          bad = re.findall(r"<script(?![^>]*\bsrc=)[^>]*>|\son[a-z]+\s*=", html, re.I)
+          if bad:
+              sys.exit(f"index.html has inline script or handlers (blocked by the CSP): {bad}")
+          if 'http-equiv="Content-Security-Policy"' not in html:
+              sys.exit("index.html lost its Content-Security-Policy")
+          print("index.html: no inline scripts, CSP present")
           PY
-          for f in /tmp/block*.js; do node --check "$f"; echo "$f ok"; done
           python3 -c "import json; json.load(open('web/manifest.webmanifest'))"
 
   e2e:
