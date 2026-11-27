@@ -58,7 +58,9 @@
         : "Not enough free space on this device to import that file");
       return;
     }
-    try { pending = JSON.parse(await f.text()); }
+    // FileReader, not Blob.text(): that needs Chrome/WebView 76+.
+    const read = (file) => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ko(r.error); r.readAsText(file); });
+    try { pending = JSON.parse(await read(f)); }
     catch(err){ toast("That file is not a macrocart export"); return; }
     if(!pending || pending.format !== "macrocart"){ pending = null; toast("That file is not a macrocart export"); return; }
     const n = (k) => Array.isArray(pending[k]) ? pending[k].length : 0;

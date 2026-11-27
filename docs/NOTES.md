@@ -147,3 +147,10 @@ when the browser's storage estimate says it does not fit, or when it has more th
 caps are far above real use and exist so a wrong or hostile file cannot exhaust a
 low-end phone. A replace or merge runs in one IndexedDB transaction, so an
 interrupted import leaves the data as it was.
+
+## Old WebViews
+
+`minSdk 24` means phones whose WebView was never updated (Chrome 74 on a stock
+Android 9 tablet was tested). Page code avoids APIs newer than that: no
+`replaceChildren()` (86), no `Blob.text()` (76, use `FileReader`), no `?.`/`??` (80),
+no `replaceAll()` (85), no `.at()` (92).
