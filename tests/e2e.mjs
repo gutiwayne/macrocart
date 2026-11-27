@@ -25,6 +25,8 @@ const errors = [];
 async function newPage(ctx){
   const page = await ctx.newPage();
   page.on("pageerror", e => errors.push(String(e)));
+  // Anything the Content-Security-Policy blocks shows up as a console error.
+  page.on("console", m => { if(/Content Security Policy/i.test(m.text())) errors.push("CSP: " + m.text()); });
   await page.goto(URL_);
   return page;
 }
@@ -170,6 +172,43 @@ try {
   const merged = await p2.evaluate((d) => window.macrocart.importAll(d, "merge"), data);
   assert.equal(merged.added, 0);
   assert.equal((await api(p2, "/api/products")).items.length, 4);
+
+  step("import: a file that is not JSON is refused before anything changes");
+  await p2.click("#setOpen");
+  await p2.setInputFiles("#impFile", { name: "notes.json", mimeType: "application/json", buffer: Buffer.from("not json {") });
+  await p2.waitForSelector("#toast:text('That file is not a macrocart export')");
+  assert.equal(await p2.isHidden("#impBack"), true);
+  await p2.click("#setClose");
+
+  step("import: too many records is refused, nothing is written");
+  const countBefore = (await api(p2, "/api/products")).items.length;
+  const tooMany = { ...data, items: Array.from({ length: 5001 }, (_, i) => ({ name: "x" + i })) };
+  await assert.rejects(p2.evaluate((d) => window.macrocart.importAll(d, "replace"), tooMany), /too many list lines/);
+  assert.equal((await api(p2, "/api/products")).items.length, countBefore);
+  assert.equal((await api(p2, "/api/items")).length, 2);
+
+  step("import: a file over the size cap is refused");
+  assert.deepEqual(await p2.evaluate(() => window.macrocart.importRoom(window.macrocart.IMPORT_MAX_BYTES + 1)), { ok: false, reason: "too big" });
+  assert.deepEqual(await p2.evaluate(() => window.macrocart.importRoom(1024)), { ok: true });
+
+  step("import: markup in names is shown as text, never run");
+  const hostile = { ...data, items: [], prices: [], photos: {}, products: [{ id: 1, code: "9999999999999",
+    name: '<img src=x onerror="window.__xss=1">Evil', nutrition: { proteins: 10 } }] };
+  await p2.evaluate((d) => window.macrocart.importAll(d, "merge"), hostile);
+  await p2.reload();
+  await tab(p2, "foods");
+  await p2.waitForSelector("#catBoard .tile-name:text('Evil')");
+  assert.equal(await p2.evaluate(() => window.__xss), undefined);
+  assert.equal(await p2.locator("#catBoard img[src='x']").count(), 0);
+  const evil = (await api(p2, "/api/products")).items.find(i => i.name.includes("Evil"));
+  await api(p2, "/api/products/" + evil.id, { method: "DELETE" });
+
+  step("CSP: an injected inline script does not run");
+  const seen = errors.length;
+  await p2.evaluate(() => { const s = document.createElement("script"); s.textContent = "window.__inline = 1"; document.body.appendChild(s); });
+  assert.equal(await p2.evaluate(() => window.__inline), undefined);
+  await p2.waitForTimeout(200);
+  errors.splice(seen);   // the violation just provoked is expected
 
   step("merge into the first device picks up Rice");
   const back = await p2.evaluate(() => window.macrocart.exportAll());
